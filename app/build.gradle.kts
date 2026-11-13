@@ -105,4 +105,7 @@ dependencies {
 
     // Debug
     debugImplementation(libs.androidx.ui.tooling)
+
+    // File picker support
+    implementation(libs.androidx.documentfile)
 }
