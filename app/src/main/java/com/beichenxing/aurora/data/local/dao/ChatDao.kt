@@ -21,6 +21,9 @@ interface ChatDao {
     @Query("SELECT * FROM chats ORDER BY updated_at DESC LIMIT :limit")
     suspend fun getRecent(limit: Int): List<ChatEntity>
 
+    @Query("SELECT * FROM chats ORDER BY updated_at DESC")
+    fun observeAll(): Flow<List<ChatEntity>>
+
     @Query("SELECT * FROM chats WHERE id = :id")
     suspend fun getById(id: String): ChatEntity?
 

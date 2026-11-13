@@ -250,20 +250,6 @@ private fun CharacterCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
             )
-
-            // Description preview
-            if (character.description.isNotBlank()) {
-                Text(
-                    text = character.description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(
-                        start = 8.dp, end = 8.dp, bottom = 8.dp
-                    )
-                )
-            }
         }
     }
 }

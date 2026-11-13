@@ -1,14 +1,14 @@
 package com.beichenxing.aurora.presentation.navigation
 
 sealed class NavRoutes(val route: String) {
-    // ─── Top-level destinations (bottom nav) ─────────────────────────────────
     data object CharacterList : NavRoutes("character_list")
+    data object Chats : NavRoutes("chats")
     data object Settings : NavRoutes("settings")
 
-    // ─── Chat ─────────────────────────────────────────────────────────────────
-    // Route template: "chat/{characterId}"
-    data object Chat : NavRoutes("chat/{characterId}") {
+    data object Chat : NavRoutes("chat/{characterId}/{chatId}") {
         const val ARG_CHARACTER_ID = "characterId"
-        fun route(characterId: String) = "chat/$characterId"
+        const val ARG_CHAT_ID = "chatId"
+        fun route(characterId: String, chatId: String = "new") =
+            "chat/$characterId/$chatId"
     }
 }

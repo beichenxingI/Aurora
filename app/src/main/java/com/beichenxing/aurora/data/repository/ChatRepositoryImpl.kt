@@ -69,4 +69,7 @@ class ChatRepositoryImpl @Inject constructor(
 
     override suspend fun messageCount(chatId: String): Int =
         messageDao.countByChat(chatId)
+
+    override fun observeAllChats(): Flow<List<Chat>> =
+        chatDao.observeAll().map { list -> list.map { it.toDomain() } }
 }

@@ -2,8 +2,10 @@ package com.beichenxing.aurora.presentation.navigation
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
@@ -25,9 +27,10 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.beichenxing.aurora.presentation.character.CharacterListScreen
 import com.beichenxing.aurora.presentation.chat.ChatScreen
+import com.beichenxing.aurora.presentation.chats.ChatsScreen
 import com.beichenxing.aurora.presentation.settings.SettingsScreen
 
-data class BottomNavItem(
+private data class BottomNavItem(
     val route: String,
     val label: String,
     val selectedIcon: ImageVector,
@@ -42,6 +45,12 @@ private val bottomNavItems = listOf(
         unselectedIcon = Icons.Outlined.Person
     ),
     BottomNavItem(
+        route = NavRoutes.Chats.route,
+        label = "聊天回忆",
+        selectedIcon = Icons.Filled.ChatBubble,
+        unselectedIcon = Icons.Outlined.ChatBubbleOutline
+    ),
+    BottomNavItem(
         route = NavRoutes.Settings.route,
         label = "设置",
         selectedIcon = Icons.Filled.Settings,
@@ -49,19 +58,12 @@ private val bottomNavItems = listOf(
     )
 )
 
-// Routes where the bottom nav should be hidden
-private val routesWithoutBottomNav = setOf(
-    NavRoutes.Chat.route.substringBefore("{") // "chat/"
-)
-
 @Composable
 fun AuroraNavGraph() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
-    val currentRoute = currentDestination?.route ?: ""
 
-    // Hide bottom nav on chat screen
     val showBottomNav = bottomNavItems.any { item ->
         currentDestination?.hierarchy?.any { it.route == item.route } == true
     }
@@ -73,7 +75,6 @@ fun AuroraNavGraph() {
                     bottomNavItems.forEach { item ->
                         val selected = currentDestination?.hierarchy
                             ?.any { it.route == item.route } == true
-
                         NavigationBarItem(
                             selected = selected,
                             onClick = {
@@ -87,8 +88,7 @@ fun AuroraNavGraph() {
                             },
                             icon = {
                                 Icon(
-                                    imageVector = if (selected) item.selectedIcon
-                                                  else item.unselectedIcon,
+                                    if (selected) item.selectedIcon else item.unselectedIcon,
                                     contentDescription = item.label
                                 )
                             },
@@ -102,13 +102,25 @@ fun AuroraNavGraph() {
         NavHost(
             navController = navController,
             startDestination = NavRoutes.CharacterList.route
-            // No padding here - each screen handles its own insets
         ) {
             composable(NavRoutes.CharacterList.route) {
                 CharacterListScreen(
                     modifier = Modifier.padding(innerPadding),
                     onCharacterClick = { characterId ->
-                        navController.navigate(NavRoutes.Chat.route(characterId))
+                        navController.navigate(
+                            NavRoutes.Chat.route(characterId, "new")
+                        )
+                    }
+                )
+            }
+
+            composable(NavRoutes.Chats.route) {
+                ChatsScreen(
+                    modifier = Modifier.padding(innerPadding),
+                    onChatClick = { chatId, characterId ->
+                        navController.navigate(
+                            NavRoutes.Chat.route(characterId, chatId)
+                        )
                     }
                 )
             }
@@ -124,13 +136,14 @@ fun AuroraNavGraph() {
                 arguments = listOf(
                     navArgument(NavRoutes.Chat.ARG_CHARACTER_ID) {
                         type = NavType.StringType
+                    },
+                    navArgument(NavRoutes.Chat.ARG_CHAT_ID) {
+                        type = NavType.StringType
+                        defaultValue = "new"
                     }
                 )
             ) {
-                // Chat screen manages its own full-screen layout
-                ChatScreen(
-                    onNavigateBack = { navController.popBackStack() }
-                )
+                ChatScreen(onNavigateBack = { navController.popBackStack() })
             }
         }
     }

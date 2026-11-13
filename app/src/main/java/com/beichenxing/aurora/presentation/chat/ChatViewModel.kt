@@ -48,6 +48,7 @@ class ChatViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val characterId: String = checkNotNull(savedStateHandle["characterId"])
+    private val chatIdArg: String = savedStateHandle["chatId"] ?: "new"
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
@@ -71,11 +72,15 @@ class ChatViewModel @Inject constructor(
                 val character = characterRepository.getById(characterId) ?: return@launch
                 _uiState.update { it.copy(character = character) }
 
-                val existingChats = chatRepository.getByCharacter(characterId)
-                val chat = if (existingChats.isNotEmpty()) {
-                    existingChats.first()
-                } else {
-                    createNewChat(character)
+                val chat = when {
+                    chatIdArg != "new" -> {
+                        // Open specific chat by ID
+                        chatRepository.getById(chatIdArg) ?: createNewChat(character)
+                    }
+                    else -> {
+                        // "new" = always create a new chat
+                        createNewChat(character)
+                    }
                 }
                 currentChatId = chat.id
 

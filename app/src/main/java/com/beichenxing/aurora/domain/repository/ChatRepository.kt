@@ -22,4 +22,7 @@ interface ChatRepository {
     suspend fun deleteMessage(id: String)
     suspend fun clearMessages(chatId: String)
     suspend fun messageCount(chatId: String): Int
+
+    // Returns all chats across all characters, ordered by updated_at DESC
+    fun observeAllChats(): Flow<List<Chat>>
 }
