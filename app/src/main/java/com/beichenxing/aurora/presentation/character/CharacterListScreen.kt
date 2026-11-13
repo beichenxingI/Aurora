@@ -60,6 +60,7 @@ import java.io.File
 @Composable
 fun CharacterListScreen(
     onCharacterClick: (String) -> Unit,
+    modifier: Modifier = Modifier,
     viewModel: CharacterListViewModel = hiltViewModel()
 ) {
     val characters by viewModel.characters.collectAsState()
@@ -90,7 +91,8 @@ fun CharacterListScreen(
         }
     }
 
-    Scaffold(
+    Box(modifier = modifier) {
+        Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("角色") }
@@ -162,6 +164,7 @@ fun CharacterListScreen(
                 }
             }
         }
+    }
     }
 }
 

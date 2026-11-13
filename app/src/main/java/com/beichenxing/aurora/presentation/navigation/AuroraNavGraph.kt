@@ -17,11 +17,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.beichenxing.aurora.presentation.character.CharacterListScreen
+import com.beichenxing.aurora.presentation.chat.ChatScreen
 import com.beichenxing.aurora.presentation.settings.SettingsScreen
 
 data class BottomNavItem(
@@ -46,13 +49,19 @@ private val bottomNavItems = listOf(
     )
 )
 
+// Routes where the bottom nav should be hidden
+private val routesWithoutBottomNav = setOf(
+    NavRoutes.Chat.route.substringBefore("{") // "chat/"
+)
+
 @Composable
 fun AuroraNavGraph() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+    val currentRoute = currentDestination?.route ?: ""
 
-    // Show bottom nav only on top-level destinations
+    // Hide bottom nav on chat screen
     val showBottomNav = bottomNavItems.any { item ->
         currentDestination?.hierarchy?.any { it.route == item.route } == true
     }
@@ -92,19 +101,36 @@ fun AuroraNavGraph() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = NavRoutes.CharacterList.route,
-            modifier = Modifier.padding(innerPadding)
+            startDestination = NavRoutes.CharacterList.route
+            // No padding here - each screen handles its own insets
         ) {
             composable(NavRoutes.CharacterList.route) {
                 CharacterListScreen(
+                    modifier = Modifier.padding(innerPadding),
                     onCharacterClick = { characterId ->
-                        // TODO Phase 4: navigate to chat
+                        navController.navigate(NavRoutes.Chat.route(characterId))
                     }
                 )
             }
 
             composable(NavRoutes.Settings.route) {
-                SettingsScreen()
+                SettingsScreen(
+                    modifier = Modifier.padding(innerPadding)
+                )
+            }
+
+            composable(
+                route = NavRoutes.Chat.route,
+                arguments = listOf(
+                    navArgument(NavRoutes.Chat.ARG_CHARACTER_ID) {
+                        type = NavType.StringType
+                    }
+                )
+            ) {
+                // Chat screen manages its own full-screen layout
+                ChatScreen(
+                    onNavigateBack = { navController.popBackStack() }
+                )
             }
         }
     }

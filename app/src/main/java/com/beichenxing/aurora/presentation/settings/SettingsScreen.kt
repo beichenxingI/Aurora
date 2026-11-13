@@ -53,13 +53,15 @@ import com.beichenxing.aurora.domain.model.LlmConfig
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
+    modifier: Modifier = Modifier,
     viewModel: LlmConfigViewModel = hiltViewModel()
 ) {
     val configs by viewModel.configs.collectAsState()
     val activeConfig by viewModel.activeConfig.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
 
-    Scaffold(
+    Box(modifier = modifier) {
+        Scaffold(
         topBar = {
             TopAppBar(title = { Text("设置") })
         }
@@ -111,6 +113,7 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(8.dp))
             }
         }
+    }
     }
 
     // Add/Edit dialog
