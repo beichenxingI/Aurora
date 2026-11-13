@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Aurora Chat</title>
+<style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  :root {
+    --bg: #1a1a1a;
+    --surface: #242424;
+    --surface2: #2e2e2e;
+    --border: #3a3a3a;
+    --text-primary: #f0f0f0;
+    --text-secondary: #a0a0a0;
+    --accent: #ff8c69;
+    --accent-dim: rgba(255,140,105,0.15);
+    --user-bubble: #2a3a4a;
+    --user-bubble-border: #3a5a7a;
+    --assistant-bubble: #242424;
+    --assistant-bubble-border: #3a3a3a;
+    --radius: 16px;
+    --radius-sm: 8px;
+    --font: -apple-system, "Segoe UI", sans-serif;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: var(--font);
+    font-size: 15px;
+    line-height: 1.6;
+    overflow: hidden;
+  }
+
+  /* ── Layout ── */
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  #message-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 12px 8px;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #message-list::-webkit-scrollbar { width: 0; }
+
+  /* ── Message bubbles ── */
+  .msg {
+    display: flex;
+    margin-bottom: 12px;
+    animation: fadeIn 0.18s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .msg.user { justify-content: flex-end; }
+  .msg.assistant { justify-content: flex-start; }
+  .msg.system { justify-content: center; }
+
+  .bubble {
+    max-width: 82%;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+
+  .msg.user .bubble {
+    background: var(--user-bubble);
+    border: 1px solid var(--user-bubble-border);
+    border-bottom-right-radius: var(--radius-sm);
+    color: var(--text-primary);
+  }
+
+  .msg.assistant .bubble {
+    background: var(--assistant-bubble);
+    border: 1px solid var(--assistant-bubble-border);
+    border-bottom-left-radius: var(--radius-sm);
+    color: var(--text-primary);
+  }
+
+  .msg.system .bubble {
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: 4px 8px;
+    max-width: 100%;
+  }
+
+  /* ── Reasoning block ── */
+  .reasoning-block {
+    background: rgba(255,255,255,0.04);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .reasoning-label {
+    font-size: 11px;
+    color: var(--accent);
+    margin-bottom: 4px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+  }
+
+  .reasoning-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .reasoning-block.collapsed .reasoning-text { display: none; }
+  .reasoning-block.collapsed { cursor: pointer; }
+
+  /* ── Streaming cursor ── */
+  .cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: var(--accent);
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    animation: blink 0.8s step-end infinite;
+  }
+
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+
+  /* ── Markdown styles ── */
+  .bubble p { margin-bottom: 6px; }
+  .bubble p:last-child { margin-bottom: 0; }
+
+  .bubble code {
+    background: rgba(255,255,255,0.08);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 13px;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+  }
+
+  .bubble pre {
+    background: #0d0d0d;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+    overflow-x: auto;
+    margin: 6px 0;
+    font-size: 13px;
+  }
+
+  .bubble pre code {
+    background: none;
+    padding: 0;
+    font-size: inherit;
+  }
+
+  .bubble strong { font-weight: 600; color: #fff; }
+  .bubble em { font-style: italic; color: #d0d0d0; }
+
+  .bubble h1,.bubble h2,.bubble h3 {
+    font-weight: 600;
+    margin: 8px 0 4px;
+    line-height: 1.3;
+  }
+  .bubble h1 { font-size: 1.3em; }
+  .bubble h2 { font-size: 1.15em; }
+  .bubble h3 { font-size: 1.05em; }
+
+  .bubble ul,.bubble ol {
+    padding-left: 20px;
+    margin: 4px 0;
+  }
+
+  .bubble li { margin-bottom: 2px; }
+
+  .bubble blockquote {
+    border-left: 3px solid var(--border);
+    padding-left: 10px;
+    color: var(--text-secondary);
+    margin: 6px 0;
+  }
+
+  .bubble hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 8px 0;
+  }
+
+  .bubble table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 6px 0;
+    font-size: 13px;
+  }
+
+  .bubble th,.bubble td {
+    border: 1px solid var(--border);
+    padding: 4px 8px;
+    text-align: left;
+  }
+
+  .bubble th { background: rgba(255,255,255,0.05); }
+
+  .bubble a { color: var(--accent); text-decoration: none; }
+
+  /* ── Bottom padding for input bar ── */
+  #list-padding { height: 8px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="message-list">
+    <div id="list-padding"></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  Aurora Chat Bridge Protocol (v1)
+//
+//  Kotlin → JS:
+//    window.__auroraDispatch(type, payloadObject)
+//
+//  JS → Kotlin:
+//    window.__auroraBridge.onMessage(jsonString)
+//    where jsonString = JSON.stringify({ type, payload })
+// ═══════════════════════════════════════════════════════════
+
+(function() {
+  'use strict';
+
+  // ── State ──────────────────────────────────────────────────
+  var messages = [];           // { id, role, content, reasoning }
+  var streamingId = null;      // ID of message currently streaming
+  var streamContent = '';      // accumulated stream content
+  var streamReasoning = '';    // accumulated stream reasoning
+
+  var listEl = document.getElementById('message-list');
+
+  // ── Bridge: JS → Kotlin ───────────────────────────────────
+  function sendToKotlin(type, payload) {
+    try {
+      if (window.__auroraBridge) {
+        window.__auroraBridge.onMessage(
+          JSON.stringify({ type: type, payload: payload || {} })
+        );
+      }
+    } catch (e) {
+      console.error('[Bridge] sendToKotlin error:', e);
+    }
+  }
+
+  // ── Bridge: Kotlin → JS (dispatcher) ──────────────────────
+  window.__auroraDispatch = function(type, payload) {
+    try {
+      switch (type) {
+        case 'setMessages':   handleSetMessages(payload);   break;
+        case 'appendToken':   handleAppendToken(payload);   break;
+        case 'streamEnd':     handleStreamEnd(payload);     break;
+        case 'streamError':   handleStreamError(payload);   break;
+        case 'setGenerating': handleSetGenerating(payload); break;
+        case 'clearMessages': handleClearMessages();        break;
+        default:
+          console.warn('[Bridge] Unknown type:', type);
+      }
+    } catch (e) {
+      console.error('[Bridge] dispatch error type=' + type, e);
+    }
+  };
+
+  // ── Handler: setMessages ───────────────────────────────────
+  // payload: { messages: [ { id, role, content, reasoning? } ] }
+  function handleSetMessages(payload) {
+    messages = payload.messages || [];
+    renderAllMessages();
+    scrollToBottom(false);
+  }
+
+  // ── Handler: appendToken ───────────────────────────────────
+  // payload: { id, token, isReasoning }
+  function handleAppendToken(payload) {
+    var id = payload.id;
+    var token = payload.token || '';
+    var isReasoning = !!payload.isReasoning;
+
+    if (streamingId !== id) {
+      // New streaming message started
+      streamingId = id;
+      streamContent = '';
+      streamReasoning = '';
+
+      // Find or create the bubble
+      var existing = document.getElementById('msg-' + id);
+      if (!existing) {
+        var msg = { id: id, role: 'assistant', content: '', reasoning: '' };
+        messages.push(msg);
+        appendMessageEl(msg);
+      }
+    }
+
+    if (isReasoning) {
+      streamReasoning += token;
+    } else {
+      streamContent += token;
+    }
+
+    updateStreamingBubble(id, streamContent, streamReasoning, true);
+    scrollToBottomIfNear();
+  }
+
+  // ── Handler: streamEnd ─────────────────────────────────────
+  // payload: { id }
+  function handleStreamEnd(payload) {
+    var id = payload.id || streamingId;
+    if (id) {
+      updateStreamingBubble(id, streamContent, streamReasoning, false);
+      // Update in messages array
+      var msg = messages.find(function(m) { return m.id === id; });
+      if (msg) {
+        msg.content = streamContent;
+        msg.reasoning = streamReasoning;
+      }
+    }
+    streamingId = null;
+    streamContent = '';
+    streamReasoning = '';
+    scrollToBottom(true);
+  }
+
+  // ── Handler: streamError ───────────────────────────────────
+  // payload: { id, error }
+  function handleStreamError(payload) {
+    var id = payload.id || streamingId;
+    var errorText = '[生成失败: ' + (payload.error || '未知错误') + ']';
+    if (id) {
+      updateStreamingBubble(id, errorText, '', false);
+    }
+    streamingId = null;
+    streamContent = '';
+    streamReasoning = '';
+  }
+
+  // ── Handler: setGenerating ─────────────────────────────────
+  // payload: { generating: bool }
+  // (no-op for now, visual feedback handled by cursor)
+  function handleSetGenerating(payload) {
+    // future: show/hide stop button
+  }
+
+  // ── Handler: clearMessages ─────────────────────────────────
+  function handleClearMessages() {
+    messages = [];
+    while (listEl.firstChild) {
+      listEl.removeChild(listEl.firstChild);
+    }
+    var pad = document.createElement('div');
+    pad.id = 'list-padding';
+    listEl.appendChild(pad);
+  }
+
+  // ── Render: all messages ───────────────────────────────────
+  function renderAllMessages() {
+    while (listEl.firstChild) {
+      listEl.removeChild(listEl.firstChild);
+    }
+    var pad = document.createElement('div');
+    pad.id = 'list-padding';
+    listEl.appendChild(pad);
+
+    for (var i = 0; i < messages.length; i++) {
+      appendMessageEl(messages[i]);
+    }
+  }
+
+  // ── Render: single message element ────────────────────────
+  function appendMessageEl(msg) {
+    var div = document.createElement('div');
+    div.className = 'msg ' + (msg.role || 'assistant');
+    div.id = 'msg-' + msg.id;
+
+    var bubble = document.createElement('div');
+    bubble.className = 'bubble';
+
+    // Reasoning block (if any)
+    if (msg.reasoning && msg.reasoning.length > 0) {
+      bubble.appendChild(buildReasoningEl(msg.reasoning, false));
+    }
+
+    // Content
+    var contentEl = document.createElement('div');
+    contentEl.className = 'content';
+    contentEl.innerHTML = renderMarkdown(msg.content || '');
+    bubble.appendChild(contentEl);
+
+    div.appendChild(bubble);
+
+    // Insert before the bottom padding
+    var pad = document.getElementById('list-padding');
+    if (pad) {
+      listEl.insertBefore(div, pad);
+    } else {
+      listEl.appendChild(div);
+    }
+  }
+
+  // ── Render: update streaming bubble in-place ───────────────
+  function updateStreamingBubble(id, content, reasoning, showCursor) {
+    var div = document.getElementById('msg-' + id);
+    if (!div) return;
+
+    var bubble = div.querySelector('.bubble');
+    if (!bubble) return;
+
+    // Clear and rebuild
+    bubble.innerHTML = '';
+
+    // Reasoning
+    if (reasoning && reasoning.length > 0) {
+      bubble.appendChild(buildReasoningEl(reasoning, showCursor));
+    }
+
+    // Content
+    var contentEl = document.createElement('div');
+    contentEl.className = 'content';
+    contentEl.innerHTML = renderMarkdown(content || '');
+
+    // Cursor
+    if (showCursor && (!reasoning || reasoning.length === 0 || content.length > 0)) {
+      var cursor = document.createElement('span');
+      cursor.className = 'cursor';
+      contentEl.appendChild(cursor);
+    }
+
+    bubble.appendChild(contentEl);
+  }
+
+  // ── Build reasoning element ────────────────────────────────
+  function buildReasoningEl(text, showCursor) {
+    var block = document.createElement('div');
+    block.className = 'reasoning-block';
+
+    var label = document.createElement('div');
+    label.className = 'reasoning-label';
+    label.textContent = '思考过程';
+    block.appendChild(label);
+
+    var textEl = document.createElement('div');
+    textEl.className = 'reasoning-text';
+    textEl.textContent = text; // plain text for reasoning
+
+    if (showCursor) {
+      var cursor = document.createElement('span');
+      cursor.className = 'cursor';
+      textEl.appendChild(cursor);
+    }
+
+    block.appendChild(textEl);
+
+    // Click to collapse/expand
+    block.addEventListener('click', function() {
+      block.classList.toggle('collapsed');
+    });
+
+    return block;
+  }
+
+  // ── Scroll helpers ─────────────────────────────────────────
+  function scrollToBottom(smooth) {
+    if (smooth) {
+      listEl.scrollTo({ top: listEl.scrollHeight, behavior: 'smooth' });
+    } else {
+      listEl.scrollTop = listEl.scrollHeight;
+    }
+  }
+
+  function scrollToBottomIfNear() {
+    var threshold = 150;
+    var distFromBottom = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight;
+    if (distFromBottom < threshold) {
+      listEl.scrollTop = listEl.scrollHeight;
+    }
+  }
+
+  // ── Minimal Markdown renderer ──────────────────────────────
+  // Handles: headings, bold, italic, code blocks, inline code,
+  //          blockquotes, hr, ordered/unordered lists, tables, links
+  function renderMarkdown(text) {
+    if (!text) return '';
+
+    var html = escapeHtml(text);
+
+    // Code blocks (``` ... ```) — do first to protect content
+    html = html.replace(/```[\w]*\n?([\s\S]*?)```/g, function(_, code) {
+      return '<pre><code>' + code.trim() + '</code></pre>';
+    });
+
+    // Headings
+    html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    html = html.replace(/^## (.+)$/gm,  '<h2>$1</h2>');
+    html = html.replace(/^# (.+)$/gm,   '<h1>$1</h1>');
+
+    // Bold **text**
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+    // Italic *text*
+    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+    // Inline code `code`
+    html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+    // Blockquote
+    html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+
+    // HR
+    html = html.replace(/^---+$/gm, '<hr>');
+
+    // Unordered lists
+    html = html.replace(/(^- .+\n?)+/gm, function(block) {
+      var items = block.trim().split('\n').map(function(line) {
+        return '<li>' + line.replace(/^- /, '') + '</li>';
+      }).join('');
+      return '<ul>' + items + '</ul>';
+    });
+
+    // Ordered lists
+    html = html.replace(/(^\d+\. .+\n?)+/gm, function(block) {
+      var items = block.trim().split('\n').map(function(line) {
+        return '<li>' + line.replace(/^\d+\. /, '') + '</li>';
+      }).join('');
+      return '<ol>' + items + '</ol>';
+    });
+
+    // Links [text](url)
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g,
+      '<a href="$2" target="_blank">$1</a>');
+
+    // Paragraphs: double newline → paragraph break
+    html = html.replace(/\n\n+/g, '</p><p>');
+    html = '<p>' + html + '</p>';
+
+    // Single newline → <br>
+    html = html.replace(/\n/g, '<br>');
+
+    // Clean up empty paragraphs
+    html = html.replace(/<p>\s*<\/p>/g, '');
+    html = html.replace(/<p>(<(?:ul|ol|pre|h[1-6]|blockquote|hr))/g, '$1');
+    html = html.replace(/(<\/(?:ul|ol|pre|h[1-6]|blockquote)>)<\/p>/g, '$1');
+
+    return html;
+  }
+
+  function escapeHtml(text) {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // ── Ready signal ───────────────────────────────────────────
+  // Send ready after DOM is fully loaded.
+  // Kotlin will respond with setMessages.
+  window.addEventListener('load', function() {
+    sendToKotlin('ready', {});
+    console.log('[Aurora Chat] Ready');
+  });
+
+  // Also send ready immediately in case load already fired
+  if (document.readyState === 'complete') {
+    sendToKotlin('ready', {});
+  }
+
+})();
+</script>
+</body>
+</html>

@@ -5,7 +5,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.beichenxing.aurora.domain.model.Character
 import com.beichenxing.aurora.domain.model.Chat
-import com.beichenxing.aurora.domain.model.LlmStreamChunk
 import com.beichenxing.aurora.domain.model.Message
 import com.beichenxing.aurora.domain.model.MessageRole
 import com.beichenxing.aurora.domain.repository.CharacterRepository
@@ -48,13 +47,11 @@ class ChatViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
-    // Injected via navigation argument
     private val characterId: String = checkNotNull(savedStateHandle["characterId"])
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
-    // Events emitted to the Compose layer (e.g., tell WebView to do something)
     private val _events = MutableSharedFlow<ChatEvent>()
     val events: SharedFlow<ChatEvent> = _events.asSharedFlow()
 
@@ -66,7 +63,7 @@ class ChatViewModel @Inject constructor(
         loadCharacterAndChat()
     }
 
-    // ─── Init ─────────────────────────────────────────────────────────────────
+    // ─── Load ─────────────────────────────────────────────────────────────────
 
     private fun loadCharacterAndChat() {
         viewModelScope.launch {
@@ -74,23 +71,19 @@ class ChatViewModel @Inject constructor(
                 val character = characterRepository.getById(characterId) ?: return@launch
                 _uiState.update { it.copy(character = character) }
 
-                // Get or create a chat for this character
                 val existingChats = chatRepository.getByCharacter(characterId)
                 val chat = if (existingChats.isNotEmpty()) {
-                    existingChats.first() // most recent
+                    existingChats.first()
                 } else {
                     createNewChat(character)
                 }
-
                 currentChatId = chat.id
 
-                // Load messages
                 val messages = chatRepository.getMessages(chat.id)
                 _uiState.update { it.copy(messages = messages) }
 
-                // If WebView is already ready, push data
                 if (_uiState.value.isWebViewReady) {
-                    pushToWebView()
+                    pushMessagesToWebView(messages)
                 }
             } catch (e: Exception) {
                 Timber.e(e, "Failed to load character/chat")
@@ -110,7 +103,6 @@ class ChatViewModel @Inject constructor(
         )
         chatRepository.insert(chat)
 
-        // Add first message from character if defined
         if (character.firstMessage.isNotBlank()) {
             val firstMsg = Message(
                 id = UUID.randomUUID().toString(),
@@ -118,7 +110,6 @@ class ChatViewModel @Inject constructor(
                 role = MessageRole.ASSISTANT,
                 content = character.firstMessage,
                 swipes = listOf(character.firstMessage),
-                currentSwipeIndex = 0,
                 createdAt = now
             )
             chatRepository.insertMessage(firstMsg)
@@ -130,55 +121,30 @@ class ChatViewModel @Inject constructor(
 
     // ─── WebView Ready ────────────────────────────────────────────────────────
 
-    /**
-     * Called by ChatScreen when the WebView fires the "ready" bridge event.
-     */
     fun onWebViewReady() {
         Timber.i("[Chat] WebView ready")
         _uiState.update { it.copy(isWebViewReady = true) }
         viewModelScope.launch {
-            pushToWebView()
+            pushMessagesToWebView(_uiState.value.messages)
         }
     }
 
-    /**
-     * Push character info and all messages to the WebView.
-     */
-    private suspend fun pushToWebView() {
-        val state = _uiState.value
-        val character = state.character ?: return
+    // ─── Push messages to WebView ─────────────────────────────────────────────
 
-        // Push character info
-        val characterPayload = buildCharacterPayload(character)
-        _events.emit(ChatEvent.SendToWebView(
-            type = "setCharacter",
-            payloadJson = characterPayload
-        ))
-
-        // Push messages
-        val messagesPayload = buildMessagesPayload(state.messages)
-        _events.emit(ChatEvent.SendToWebView(
-            type = "setMessages",
-            payloadJson = messagesPayload
-        ))
-
-        // Scroll to bottom
+    private suspend fun pushMessagesToWebView(messages: List<Message>) {
+        val payloadJson = buildSetMessagesPayload(messages)
+        _events.emit(ChatEvent.SendToWebView("setMessages", payloadJson))
         _events.emit(ChatEvent.ScrollToBottom)
     }
 
-    // ─── User Input ───────────────────────────────────────────────────────────
+    // ─── User sends a message ─────────────────────────────────────────────────
 
-    /**
-     * Called when user submits a message from the HTML input bar.
-     */
     fun onUserInput(text: String) {
-        if (text.isBlank()) return
-        if (_uiState.value.isGenerating) return
+        if (text.isBlank() || _uiState.value.isGenerating) return
         val chatId = currentChatId ?: return
 
         viewModelScope.launch {
             try {
-                // 1. Save user message
                 val now = System.currentTimeMillis()
                 val userMsg = Message(
                     id = UUID.randomUUID().toString(),
@@ -190,20 +156,11 @@ class ChatViewModel @Inject constructor(
                 )
                 chatRepository.insertMessage(userMsg)
 
-                val updatedMessages = chatRepository.getMessages(chatId)
-                _uiState.update { it.copy(messages = updatedMessages) }
+                val updated = chatRepository.getMessages(chatId)
+                _uiState.update { it.copy(messages = updated) }
+                pushMessagesToWebView(updated)
 
-                // 2. Update WebView with new user message
-                val messagesPayload = buildMessagesPayload(updatedMessages)
-                _events.emit(ChatEvent.SendToWebView(
-                    type = "setMessages",
-                    payloadJson = messagesPayload
-                ))
-                _events.emit(ChatEvent.ScrollToBottom)
-
-                // 3. Start AI generation
-                generateResponse(chatId, updatedMessages)
-
+                generateResponse(chatId, updated)
             } catch (e: Exception) {
                 Timber.e(e, "Failed to send message")
                 _uiState.update { it.copy(error = e.message) }
@@ -211,7 +168,7 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    // ─── Generation ───────────────────────────────────────────────────────────
+    // ─── LLM streaming generation ─────────────────────────────────────────────
 
     private fun generateResponse(chatId: String, messages: List<Message>) {
         generationJob?.cancel()
@@ -219,121 +176,105 @@ class ChatViewModel @Inject constructor(
         generationJob = viewModelScope.launch {
             val config = llmConfigRepository.getActive()
             if (config == null) {
-                _uiState.update { it.copy(error = "请先在设置中配置 LLM") }
+                _uiState.update { it.copy(error = "请先在设置中添加 LLM 配置") }
                 return@launch
             }
 
             val character = _uiState.value.character
             val systemPrompt = buildSystemPrompt(character)
 
-            // Create placeholder assistant message
             val now = System.currentTimeMillis()
-            val assistantMsgId = UUID.randomUUID().toString()
-            streamingMessageId = assistantMsgId
+            val assistantId = UUID.randomUUID().toString()
+            streamingMessageId = assistantId
 
-            val placeholderMsg = Message(
-                id = assistantMsgId,
+            // Create empty assistant message in DB
+            val placeholder = Message(
+                id = assistantId,
                 chatId = chatId,
                 role = MessageRole.ASSISTANT,
                 content = "",
                 swipes = listOf(""),
                 createdAt = now
             )
-            chatRepository.insertMessage(placeholderMsg)
+            chatRepository.insertMessage(placeholder)
 
             _uiState.update { state ->
                 state.copy(
-                    messages = state.messages + placeholderMsg,
+                    messages = state.messages + placeholder,
                     isGenerating = true
                 )
             }
 
-            // Notify WebView generation started
+            // Notify WebView a new streaming message is starting
             _events.emit(ChatEvent.SendToWebView(
-                type = "setGenerating",
-                payloadJson = """{"generating":true,"messageId":"$assistantMsgId"}"""
+                "setGenerating",
+                """{"generating":true,"id":"$assistantId"}"""
             ))
 
-            // Stream tokens
             var fullContent = ""
             var fullReasoning = ""
 
             try {
                 llmService.streamChat(config, messages, systemPrompt).collect { chunk ->
                     when {
-                        chunk.isDone -> Unit // handled below
+                        chunk.isDone -> Unit
 
                         chunk.isReasoningChunk && chunk.reasoning != null -> {
                             fullReasoning += chunk.reasoning
-                            // Send reasoning token to WebView
-                            val tokenPayload = buildAppendTokenPayload(
-                                messageId = assistantMsgId,
-                                token = chunk.reasoning,
-                                isReasoning = true
-                            )
                             _events.emit(ChatEvent.SendToWebView(
-                                type = "appendToken",
-                                payloadJson = tokenPayload
+                                "appendToken",
+                                buildTokenPayload(assistantId, chunk.reasoning, true)
                             ))
                         }
 
                         !chunk.isReasoningChunk && chunk.content != null -> {
                             fullContent += chunk.content
-                            // Send content token to WebView
-                            val tokenPayload = buildAppendTokenPayload(
-                                messageId = assistantMsgId,
-                                token = chunk.content,
-                                isReasoning = false
-                            )
                             _events.emit(ChatEvent.SendToWebView(
-                                type = "appendToken",
-                                payloadJson = tokenPayload
+                                "appendToken",
+                                buildTokenPayload(assistantId, chunk.content, false)
                             ))
                         }
                     }
                 }
 
-                // Generation complete - save to DB
-                val finalMsg = placeholderMsg.copy(
+                // Save final message
+                val finalMsg = placeholder.copy(
                     content = fullContent,
                     reasoning = fullReasoning.ifBlank { null },
                     swipes = listOf(fullContent)
                 )
                 chatRepository.updateMessage(finalMsg)
 
-                val updatedMessages = chatRepository.getMessages(chatId)
-                _uiState.update { it.copy(messages = updatedMessages, isGenerating = false) }
+                val finalMessages = chatRepository.getMessages(chatId)
+                _uiState.update { it.copy(messages = finalMessages, isGenerating = false) }
 
-                // Notify WebView
                 _events.emit(ChatEvent.SendToWebView(
-                    type = "streamEnd",
-                    payloadJson = """{"messageId":"$assistantMsgId"}"""
+                    "streamEnd",
+                    """{"id":"$assistantId"}"""
                 ))
                 _events.emit(ChatEvent.SendToWebView(
-                    type = "setGenerating",
-                    payloadJson = """{"generating":false}"""
+                    "setGenerating",
+                    """{"generating":false}"""
                 ))
 
             } catch (e: Exception) {
                 Timber.e(e, "Generation failed")
-
-                val errorMsg = placeholderMsg.copy(content = "[生成失败: ${e.message}]")
+                val errorMsg = placeholder.copy(content = "[生成失败: ${e.message}]")
                 chatRepository.updateMessage(errorMsg)
 
                 _uiState.update { state ->
                     val msgs = state.messages.map {
-                        if (it.id == assistantMsgId) errorMsg else it
+                        if (it.id == assistantId) errorMsg else it
                     }
                     state.copy(messages = msgs, isGenerating = false, error = e.message)
                 }
 
                 _events.emit(ChatEvent.SendToWebView(
-                    type = "streamError",
-                    payloadJson = """{"error":"${e.message ?: "Unknown error"}"}"""
+                    "streamError",
+                    """{"id":"$assistantId","error":"${escapeJson(e.message ?: "Unknown")}"}"""
                 ))
                 _events.emit(ChatEvent.SendToWebView(
-                    type = "setGenerating",
-                    payloadJson = """{"generating":false}"""
+                    "setGenerating", """{"generating":false}"""
                 ))
             } finally {
                 streamingMessageId = null
@@ -346,10 +287,7 @@ class ChatViewModel @Inject constructor(
         generationJob = null
         _uiState.update { it.copy(isGenerating = false) }
         viewModelScope.launch {
-            _events.emit(ChatEvent.SendToWebView(
-                type = "setGenerating",
-                payloadJson = """{"generating":false}"""
-            ))
+            _events.emit(ChatEvent.SendToWebView("setGenerating", """{"generating":false}"""))
         }
     }
 
@@ -362,7 +300,37 @@ class ChatViewModel @Inject constructor(
         generationJob?.cancel()
     }
 
-    // ─── Payload Builders ─────────────────────────────────────────────────────
+    // ─── Payload builders ─────────────────────────────────────────────────────
+
+    /**
+     * Build setMessages payload.
+     * Format: { messages: [ { id, role, content, reasoning? } ] }
+     */
+    private fun buildSetMessagesPayload(messages: List<Message>): String {
+        val sb = StringBuilder()
+        sb.append("""{"messages":[""")
+        messages.forEachIndexed { index, msg ->
+            sb.append("""{"id":"${msg.id}",""")
+            sb.append(""""role":"${msg.role.value}",""")
+            sb.append(""""content":"${escapeJson(msg.currentContent)}"""")
+            val reasoning = msg.currentReasoning
+            if (!reasoning.isNullOrBlank()) {
+                sb.append(""","reasoning":"${escapeJson(reasoning)}"""")
+            }
+            sb.append("}")
+            if (index < messages.size - 1) sb.append(",")
+        }
+        sb.append("]}")
+        return sb.toString()
+    }
+
+    /**
+     * Build appendToken payload.
+     * Format: { id, token, isReasoning }
+     */
+    private fun buildTokenPayload(id: String, token: String, isReasoning: Boolean): String {
+        return """{"id":"$id","token":"${escapeJson(token)}","isReasoning":$isReasoning}"""
+    }
 
     private fun buildSystemPrompt(character: Character?): String {
         if (character == null) return ""
@@ -374,59 +342,13 @@ class ChatViewModel @Inject constructor(
         return parts.joinToString("\n\n")
     }
 
-    private fun buildCharacterPayload(character: Character): String {
-        // Build minimal character JSON that chat_stage.html understands
-        val name = character.name.replace("\"", "\\\"")
-        val desc = character.description.replace("\"", "\\\"").take(500)
-        val avatarPath = character.avatarPath?.replace("\\", "\\\\")
-            ?.replace("\"", "\\\"") ?: ""
-        return """
-            {
-                "id": "${character.id}",
-                "name": "$name",
-                "description": "$desc",
-                "avatarPath": "$avatarPath"
-            }
-        """.trimIndent()
-    }
-
-    private fun buildMessagesPayload(messages: List<Message>): String {
-        val sb = StringBuilder()
-        sb.append("""{"messages":[""")
-        messages.forEachIndexed { index, msg ->
-            val content = msg.currentContent
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-            val reasoning = msg.currentReasoning
-                ?.replace("\\", "\\\\")
-                ?.replace("\"", "\\\"")
-                ?.replace("\n", "\\n")
-                ?.replace("\r", "\\r")
-                ?: ""
-
-            sb.append("""{"id":"${msg.id}","role":"${msg.role.value}","content":"$content"""")
-            if (reasoning.isNotBlank()) {
-                sb.append(""","reasoning":"$reasoning"""")
-            }
-            sb.append("}")
-            if (index < messages.size - 1) sb.append(",")
-        }
-        sb.append("]}")
-        return sb.toString()
-    }
-
-    private fun buildAppendTokenPayload(
-        messageId: String,
-        token: String,
-        isReasoning: Boolean
-    ): String {
-        val escaped = token
-            .replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-        return """{"id":"$messageId","token":"$escaped","isReasoning":$isReasoning}"""
-    }
+    /**
+     * Escape a string for safe embedding inside a JSON string value.
+     */
+    private fun escapeJson(text: String): String = text
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
 }

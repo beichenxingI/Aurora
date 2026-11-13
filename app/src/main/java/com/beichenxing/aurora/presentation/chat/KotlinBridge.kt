@@ -9,32 +9,30 @@ import kotlinx.serialization.json.jsonPrimitive
 import timber.log.Timber
 
 /**
- * Android @JavascriptInterface bridge.
+ * Android @JavascriptInterface registered as window.__auroraBridge.
  *
- * Registered as window.__kiraAndroidBridge in WebView.
- * The BridgeShim patches window.flutter_inappwebview to forward all
- * calls to this interface, so chat_stage.html needs no modification.
+ * Aurora Chat Protocol v1:
+ *   JS → Kotlin: window.__auroraBridge.onMessage(jsonString)
+ *   Kotlin → JS: window.__auroraDispatch(type, payloadObject)
  *
- * All JS calls arrive on the WebView's JS thread.
- * We dispatch work to the provided coroutine scope.
+ * Message format: { "type": "...", "payload": { ... } }
  */
 class KotlinBridge(
     private val scope: CoroutineScope,
     private val onReady: () -> Unit,
     private val onUserInput: (text: String) -> Unit,
-    private val onStopGeneration: () -> Unit,
-    private val onLog: (message: String) -> Unit = {}
+    private val onStopGeneration: () -> Unit
 ) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     @JavascriptInterface
     fun onMessage(jsonString: String) {
         try {
-            val envelope = json.parseToJsonElement(jsonString).jsonObject
-            val type = envelope["type"]?.jsonPrimitive?.content ?: return
-            val payload = envelope["payload"] ?: envelope // some messages use flat format
+            val root = json.parseToJsonElement(jsonString).jsonObject
+            val type = root["type"]?.jsonPrimitive?.content ?: return
+            val payload = root["payload"]?.jsonObject
 
-            Timber.d("[Bridge ←] type=$type")
+            Timber.d("[Bridge ←] $type")
 
             scope.launch {
                 when (type) {
@@ -44,24 +42,7 @@ class KotlinBridge(
                     }
 
                     "userInput" -> {
-                        // Payload: { text: "..." }
-                        val text = try {
-                            payload.jsonObject["text"]?.jsonPrimitive?.content ?: ""
-                        } catch (e: Exception) {
-                            jsonString // fallback: use raw string
-                        }
-                        if (text.isNotBlank()) {
-                            onUserInput(text)
-                        }
-                    }
-
-                    "sendMessage" -> {
-                        // Alternative key used by some versions of chat_stage.html
-                        val text = try {
-                            payload.jsonObject["text"]?.jsonPrimitive?.content
-                                ?: payload.jsonObject["message"]?.jsonPrimitive?.content
-                                ?: ""
-                        } catch (e: Exception) { "" }
+                        val text = payload?.get("text")?.jsonPrimitive?.content ?: return@launch
                         if (text.isNotBlank()) {
                             onUserInput(text)
                         }
@@ -71,30 +52,13 @@ class KotlinBridge(
                         onStopGeneration()
                     }
 
-                    "log" -> {
-                        val message = try {
-                            payload.jsonObject["message"]?.jsonPrimitive?.content
-                                ?: jsonString
-                        } catch (e: Exception) { jsonString }
-                        onLog(message)
-                        Timber.d("[Bridge JS] $message")
-                    }
-
-                    "error" -> {
-                        val message = try {
-                            payload.jsonObject["message"]?.jsonPrimitive?.content
-                                ?: jsonString
-                        } catch (e: Exception) { jsonString }
-                        Timber.e("[Bridge JS Error] $message")
-                    }
-
                     else -> {
-                        Timber.v("[Bridge] Unhandled type: $type")
+                        Timber.v("[Bridge] Unhandled: $type")
                     }
                 }
             }
         } catch (e: Exception) {
-            Timber.e(e, "[Bridge] Failed to parse message: $jsonString")
+            Timber.e(e, "[Bridge] Parse error: $jsonString")
         }
     }
 }

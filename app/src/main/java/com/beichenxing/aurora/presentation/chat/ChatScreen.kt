@@ -29,7 +29,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.beichenxing.aurora.core.utils.BridgeShim
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.flow.collectLatest
 import timber.log.Timber
@@ -51,7 +50,38 @@ fun ChatScreen(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            configureWebView(this)
+            settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                allowFileAccess = true
+                allowContentAccess = true
+                mediaPlaybackRequiresUserGesture = false
+                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                setSupportZoom(false)
+                builtInZoomControls = false
+                displayZoomControls = false
+            }
+            setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+
+            webViewClient = object : WebViewClient() {
+                override fun onReceivedError(
+                    view: WebView?,
+                    errorCode: Int,
+                    description: String?,
+                    failingUrl: String?
+                ) {
+                    Timber.e("[WebView] Error $errorCode: $description")
+                }
+            }
+
+            webChromeClient = object : WebChromeClient() {
+                override fun onConsoleMessage(
+                    message: android.webkit.ConsoleMessage
+                ): Boolean {
+                    Timber.d("[JS] ${message.message()} (line ${message.lineNumber()})")
+                    return true
+                }
+            }
         }
     }
 
@@ -62,25 +92,30 @@ fun ChatScreen(
             onUserInput = { text -> viewModel.onUserInput(text) },
             onStopGeneration = { viewModel.stopGeneration() }
         )
-        webView.addJavascriptInterface(bridge, "__kiraAndroidBridge")
-        webView.loadUrl("file:///android_asset/chat/chat_stage.html")
+        // Register as window.__auroraBridge
+        webView.addJavascriptInterface(bridge, "__auroraBridge")
+        // Load Aurora's chat HTML
+        webView.loadUrl("file:///android_asset/chat/index.html")
 
         onDispose {
-            webView.removeJavascriptInterface("__kiraAndroidBridge")
+            webView.removeJavascriptInterface("__auroraBridge")
         }
     }
 
+    // Handle events from ViewModel
     LaunchedEffect(Unit) {
         viewModel.events.collectLatest { event ->
             when (event) {
                 is ChatEvent.SendToWebView -> {
-                    val js = buildJsDispatch(event.type, event.payloadJson)
-                    Timber.d("[Bridge →] type=${event.type}")
+                    Timber.d("[Bridge →] ${event.type}")
+                    // Call window.__auroraDispatch(type, payload)
+                    val js = "window.__auroraDispatch('${event.type}', ${event.payloadJson});"
                     webView.evaluateJavascript(js, null)
                 }
                 is ChatEvent.ScrollToBottom -> {
                     webView.evaluateJavascript(
-                        "window.scrollTo(0,document.body.scrollHeight);", null
+                        "document.getElementById('message-list')?.scrollTo(0, 999999);",
+                        null
                     )
                 }
             }
@@ -94,8 +129,7 @@ fun ChatScreen(
         }
     }
 
-    // No Scaffold here — parent Scaffold (AuroraNavGraph) already provides one.
-    // Using Column to stack TopAppBar + WebView + SnackbarHost.
+    // No nested Scaffold - use Column directly
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
             title = {
@@ -124,57 +158,3 @@ fun ChatScreen(
         SnackbarHost(snackbarHostState)
     }
 }
-
-@SuppressLint("SetJavaScriptEnabled")
-private fun configureWebView(webView: WebView) {
-    webView.settings.apply {
-        javaScriptEnabled = true
-        domStorageEnabled = true
-        allowFileAccess = true
-        allowContentAccess = true
-        mediaPlaybackRequiresUserGesture = false
-        mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-        cacheMode = WebSettings.LOAD_DEFAULT
-        setSupportZoom(false)
-        builtInZoomControls = false
-        displayZoomControls = false
-    }
-
-    webView.webViewClient = object : WebViewClient() {
-        override fun onPageFinished(view: WebView?, url: String?) {
-            super.onPageFinished(view, url)
-            // Inject shim after page loads
-            view?.evaluateJavascript(BridgeShim.getShimScript()) { result ->
-                Timber.d("[BridgeShim] injected: $result")
-            }
-        }
-    }
-
-    webView.webChromeClient = object : WebChromeClient() {
-        override fun onConsoleMessage(
-            message: android.webkit.ConsoleMessage
-        ): Boolean {
-            Timber.d("[JS] ${message.message()} (${message.sourceId()}:${message.lineNumber()})")
-            return true
-        }
-    }
-
-    webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
-}
-
-private fun buildJsDispatch(type: String, payloadJson: String): String = """
-    (function() {
-        try {
-            var msg = { type: '$type', payload: $payloadJson };
-            if (window.__bridgeDispatch) {
-                window.__bridgeDispatch(JSON.stringify(msg));
-            } else if (window.__kiraReceive) {
-                window.__kiraReceive(JSON.stringify(msg));
-            } else {
-                console.warn('[Aurora] No bridge dispatcher for: $type');
-            }
-        } catch(e) {
-            console.error('[Aurora] dispatch error:', e);
-        }
-    })();
-""".trimIndent()
