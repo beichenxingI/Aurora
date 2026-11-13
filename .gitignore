@@ -1,0 +1,26 @@
+# Android
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Kotlin
+*.kotlin_module
+
+# App specific
+app/release/
+*.jks
+*.keystore
+*.pem
+.env
+key.properties
+
+# Agent tooling
+.opencode/
+DiaoYan/
