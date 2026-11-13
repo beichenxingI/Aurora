@@ -1,2 +1,2 @@
 # Aurora
-Native Android AI chat client. The next generation o KiraKira.
+A native Android AI chat client. SillyTavern compatible.
