@@ -1,5 +1,8 @@
 package com.beichenxing.aurora.presentation.navigation
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChatBubble
@@ -71,7 +74,9 @@ fun AuroraNavGraph() {
     Scaffold(
         bottomBar = {
             if (showBottomNav) {
-                NavigationBar {
+                NavigationBar(
+                        windowInsets = WindowInsets.navigationBars
+                    ) {
                     bottomNavItems.forEach { item ->
                         val selected = currentDestination?.hierarchy
                             ?.any { it.route == item.route } == true
@@ -105,7 +110,9 @@ fun AuroraNavGraph() {
         ) {
             composable(NavRoutes.CharacterList.route) {
                 CharacterListScreen(
-                    modifier = Modifier.padding(innerPadding),
+                    modifier = Modifier
+                        .padding(innerPadding)
+                        .consumeWindowInsets(innerPadding),
                     onCharacterClick = { characterId ->
                         navController.navigate(
                             NavRoutes.Chat.route(characterId, "new")
@@ -116,7 +123,9 @@ fun AuroraNavGraph() {
 
             composable(NavRoutes.Chats.route) {
                 ChatsScreen(
-                    modifier = Modifier.padding(innerPadding),
+                    modifier = Modifier
+                        .padding(innerPadding)
+                        .consumeWindowInsets(innerPadding),
                     onChatClick = { chatId, characterId ->
                         navController.navigate(
                             NavRoutes.Chat.route(characterId, chatId)
@@ -127,7 +136,9 @@ fun AuroraNavGraph() {
 
             composable(NavRoutes.Settings.route) {
                 SettingsScreen(
-                    modifier = Modifier.padding(innerPadding)
+                    modifier = Modifier
+                        .padding(innerPadding)
+                        .consumeWindowInsets(innerPadding)
                 )
             }
 

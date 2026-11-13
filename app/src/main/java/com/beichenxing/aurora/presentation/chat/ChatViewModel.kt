@@ -56,6 +56,7 @@ class ChatViewModel @Inject constructor(
     private val _events = MutableSharedFlow<ChatEvent>()
     val events: SharedFlow<ChatEvent> = _events.asSharedFlow()
 
+    private var pendingCharacter: Character? = null
     private var currentChatId: String? = null
     private var generationJob: Job? = null
     private var streamingMessageId: String? = null
@@ -72,56 +73,44 @@ class ChatViewModel @Inject constructor(
                 val character = characterRepository.getById(characterId) ?: return@launch
                 _uiState.update { it.copy(character = character) }
 
-                val chat = when {
+                when {
+                    // Open specific existing chat
                     chatIdArg != "new" -> {
-                        // Open specific chat by ID
-                        chatRepository.getById(chatIdArg) ?: createNewChat(character)
+                        val chat = chatRepository.getById(chatIdArg)
+                        if (chat != null) {
+                            currentChatId = chat.id
+                            val messages = chatRepository.getMessages(chat.id)
+                            _uiState.update { it.copy(messages = messages) }
+                            if (_uiState.value.isWebViewReady) {
+                                pushMessagesToWebView(messages)
+                            }
+                        }
                     }
+                    // "new" = do NOT create chat yet, wait for first message
                     else -> {
-                        // "new" = always create a new chat
-                        createNewChat(character)
+                        pendingCharacter = character
+                        // Show first_message if defined, but don't save to DB yet
+                        if (character.firstMessage.isNotBlank()) {
+                            val preview = Message(
+                                id = "preview_first_msg",
+                                chatId = "",
+                                role = MessageRole.ASSISTANT,
+                                content = character.firstMessage,
+                                swipes = listOf(character.firstMessage),
+                                createdAt = System.currentTimeMillis()
+                            )
+                            _uiState.update { it.copy(messages = listOf(preview)) }
+                            if (_uiState.value.isWebViewReady) {
+                                pushMessagesToWebView(listOf(preview))
+                            }
+                        }
                     }
-                }
-                currentChatId = chat.id
-
-                val messages = chatRepository.getMessages(chat.id)
-                _uiState.update { it.copy(messages = messages) }
-
-                if (_uiState.value.isWebViewReady) {
-                    pushMessagesToWebView(messages)
                 }
             } catch (e: Exception) {
                 Timber.e(e, "Failed to load character/chat")
                 _uiState.update { it.copy(error = e.message) }
             }
         }
-    }
-
-    private suspend fun createNewChat(character: Character): Chat {
-        val now = System.currentTimeMillis()
-        val chat = Chat(
-            id = UUID.randomUUID().toString(),
-            characterId = character.id,
-            title = character.name,
-            createdAt = now,
-            updatedAt = now
-        )
-        chatRepository.insert(chat)
-
-        if (character.firstMessage.isNotBlank()) {
-            val firstMsg = Message(
-                id = UUID.randomUUID().toString(),
-                chatId = chat.id,
-                role = MessageRole.ASSISTANT,
-                content = character.firstMessage,
-                swipes = listOf(character.firstMessage),
-                createdAt = now
-            )
-            chatRepository.insertMessage(firstMsg)
-            _uiState.update { it.copy(messages = listOf(firstMsg)) }
-        }
-
-        return chat
     }
 
     // ─── WebView Ready ────────────────────────────────────────────────────────
@@ -146,11 +135,43 @@ class ChatViewModel @Inject constructor(
 
     fun onUserInput(text: String) {
         if (text.isBlank() || _uiState.value.isGenerating) return
-        val chatId = currentChatId ?: return
 
         viewModelScope.launch {
             try {
+                // Create chat on first message if not yet created
+                if (currentChatId == null) {
+                    val character = pendingCharacter
+                        ?: characterRepository.getById(characterId)
+                        ?: return@launch
+
+                    val now = System.currentTimeMillis()
+                    val newChat = Chat(
+                        id = UUID.randomUUID().toString(),
+                        characterId = character.id,
+                        title = character.name,
+                        createdAt = now,
+                        updatedAt = now
+                    )
+                    chatRepository.insert(newChat)
+                    currentChatId = newChat.id
+
+                    // If there was a preview first_message, save it now
+                    if (character.firstMessage.isNotBlank()) {
+                        val firstMsg = Message(
+                            id = UUID.randomUUID().toString(),
+                            chatId = newChat.id,
+                            role = MessageRole.ASSISTANT,
+                            content = character.firstMessage,
+                            swipes = listOf(character.firstMessage),
+                            createdAt = now - 1
+                        )
+                        chatRepository.insertMessage(firstMsg)
+                    }
+                }
+
+                val chatId = currentChatId ?: return@launch
                 val now = System.currentTimeMillis()
+
                 val userMsg = Message(
                     id = UUID.randomUUID().toString(),
                     chatId = chatId,
@@ -164,8 +185,8 @@ class ChatViewModel @Inject constructor(
                 val updated = chatRepository.getMessages(chatId)
                 _uiState.update { it.copy(messages = updated) }
                 pushMessagesToWebView(updated)
-
                 generateResponse(chatId, updated)
+
             } catch (e: Exception) {
                 Timber.e(e, "Failed to send message")
                 _uiState.update { it.copy(error = e.message) }

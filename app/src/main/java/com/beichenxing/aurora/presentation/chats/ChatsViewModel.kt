@@ -32,6 +32,8 @@ class ChatsViewModel @Inject constructor(
             for (chat in chats) {
                 val character = characterRepository.getById(chat.characterId)
                 val lastMsg = chatRepository.getLastMessage(chat.id)
+                // Only show chats that have at least one message
+                if (lastMsg == null) continue
                 items.add(
                     ChatListItem(
                         chatId = chat.id,
