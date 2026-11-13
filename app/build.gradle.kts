@@ -108,4 +108,7 @@ dependencies {
 
     // File picker support
     implementation(libs.androidx.documentfile)
+
+    // Material Components XML themes
+    implementation(libs.material)
 }
