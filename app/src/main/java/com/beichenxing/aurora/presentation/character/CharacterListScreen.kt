@@ -63,6 +63,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import com.beichenxing.aurora.presentation.common.component.AuroraButton
+import com.beichenxing.aurora.presentation.common.component.AuroraIconTextButton
+import com.beichenxing.aurora.presentation.common.theme.AuroraColors
 import com.beichenxing.aurora.domain.model.Character
 import java.io.File
 
@@ -218,67 +221,66 @@ private fun CharacterDetailSheetContent(
     onDeleteRequest: () -> Unit
 ) {
     Column(
-        modifier = Modifier
+        modifier              = Modifier
             .fillMaxWidth()
             .padding(bottom = 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment   = Alignment.CenterHorizontally
     ) {
         // Avatar
         Box(
-            modifier = Modifier
+            modifier         = Modifier
                 .size(100.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .background(AuroraColors.BgSoft),
             contentAlignment = Alignment.Center
         ) {
             if (character.avatarPath != null) {
                 AsyncImage(
-                    model = File(character.avatarPath),
+                    model              = File(character.avatarPath),
                     contentDescription = character.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
+                    contentScale       = ContentScale.Crop,
+                    modifier           = Modifier.fillMaxSize()
                 )
             } else {
                 Icon(
-                    imageVector = Icons.Default.Person,
+                    imageVector        = Icons.Default.Person,
                     contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    modifier           = Modifier.size(48.dp),
+                    tint               = AuroraColors.TextMuted
                 )
             }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Name
         Text(
-            text = character.name,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold
+            text       = character.name,
+            style      = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            color      = AuroraColors.TextPrimary
         )
 
-        // Description / creator notes
         val descriptionPreview = character.description.take(100)
         val subtitle = character.creatorNotes.ifBlank { descriptionPreview }
             .takeIf { it.isNotBlank() }
         if (subtitle != null) {
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
+                text      = subtitle,
+                style     = MaterialTheme.typography.bodyMedium,
+                color     = AuroraColors.TextSecondary,
+                maxLines  = 3,
+                overflow  = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 24.dp)
+                modifier  = Modifier.padding(horizontal = 24.dp)
             )
         }
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // Start chat button
-        Button(
-            onClick = onStartChat,
+        // Start chat — uses AuroraButton shell
+        AuroraButton(
+            onClick  = onStartChat,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
@@ -287,51 +289,38 @@ private fun CharacterDetailSheetContent(
             Icon(
                 Icons.Default.Chat,
                 contentDescription = null,
-                modifier = Modifier.size(18.dp)
+                modifier           = Modifier.size(18.dp)
             )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("开始聊天", style = MaterialTheme.typography.labelLarge)
+            Text(
+                text       = "开始聊天",
+                modifier   = Modifier.padding(start = 8.dp),
+                fontWeight = FontWeight.SemiBold
+            )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // Action row: pin + delete
+        // Action row — uses AuroraIconTextButton shells
         Row(
-            modifier = Modifier
+            modifier              = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Pin / Unpin
-            OutlinedButton(
-                onClick = onTogglePin,
-                modifier = Modifier.weight(1f)
-            ) {
-                Icon(
-                    Icons.Default.PushPin,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(if (character.isPinned) "取消置顶" else "置顶")
-            }
-
-            // Delete
-            OutlinedButton(
-                onClick = onDeleteRequest,
+            AuroraIconTextButton(
+                icon     = Icons.Default.PushPin,
+                label    = if (character.isPinned) "取消置顶" else "置顶",
+                onClick  = onTogglePin,
                 modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error
-                )
-            ) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("删除")
-            }
+                tint     = AuroraColors.Mint
+            )
+            AuroraIconTextButton(
+                icon     = Icons.Default.Delete,
+                label    = "删除",
+                onClick  = onDeleteRequest,
+                modifier = Modifier.weight(1f),
+                tint     = AuroraColors.Danger
+            )
         }
     }
 }
@@ -346,90 +335,99 @@ private fun CharacterCard(
     modifier: Modifier = Modifier
 ) {
     androidx.compose.material3.Card(
-        modifier = modifier
+        modifier  = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
-        elevation = androidx.compose.material3.CardDefaults.cardElevation(defaultElevation = 2.dp)
+        shape     = RoundedCornerShape(16.dp),
+        elevation = androidx.compose.material3.CardDefaults.cardElevation(
+            defaultElevation = 4.dp
+        ),
+        colors = androidx.compose.material3.CardDefaults.cardColors(
+            containerColor = AuroraColors.BgSurface
+        )
     ) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(3f / 4f)
-            ) {
-                if (character.avatarPath != null) {
-                    AsyncImage(
-                        model = File(character.avatarPath),
-                        contentDescription = character.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = null,
-                            modifier = Modifier.size(48.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                // Pinned indicator
-                if (character.isPinned) {
-                    Icon(
-                        imageVector = Icons.Default.PushPin,
-                        contentDescription = "已置顶",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(6.dp)
-                            .size(16.dp)
-                            .background(
-                                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
-                                shape = CircleShape
-                            )
-                            .padding(2.dp)
-                    )
-                }
-
-                // Favorite button
-                IconButton(
-                    onClick = onFavoriteClick,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(4.dp)
-                        .size(32.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                            shape = CircleShape
-                        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(3f / 4f)
+        ) {
+            // ── Full-bleed avatar ─────────────────────────────────────────────
+            if (character.avatarPath != null) {
+                AsyncImage(
+                    model              = File(character.avatarPath),
+                    contentDescription = character.name,
+                    contentScale       = ContentScale.Crop,
+                    modifier           = Modifier.fillMaxSize()
+                )
+            } else {
+                Box(
+                    modifier           = Modifier
+                        .fillMaxSize()
+                        .background(AuroraColors.BgSoft),
+                    contentAlignment   = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = if (character.isFavorite) Icons.Default.Favorite
-                                      else Icons.Default.FavoriteBorder,
-                        contentDescription = if (character.isFavorite) "取消收藏" else "收藏",
-                        tint = if (character.isFavorite) MaterialTheme.colorScheme.error
-                               else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(16.dp)
+                        imageVector = Icons.Default.Person,
+                        contentDescription = null,
+                        modifier    = Modifier.size(56.dp),
+                        tint        = AuroraColors.TextMuted
                     )
                 }
             }
 
-            // Name only (no description text)
-            Text(
-                text = character.name,
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
-            )
+            // ── Bottom scrim + name ───────────────────────────────────────────
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .background(AuroraColors.CardNameScrim)
+                    .padding(horizontal = 10.dp, vertical = 10.dp)
+            ) {
+                Column {
+                    // Pinned badge
+                    if (character.isPinned) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(bottom = 2.dp)
+                        ) {
+                            Icon(
+                                imageVector  = Icons.Default.PushPin,
+                                contentDescription = null,
+                                tint         = AuroraColors.Mint,
+                                modifier     = Modifier.size(10.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text      = character.name,
+                        style     = MaterialTheme.typography.titleSmall,
+                        color     = AuroraColors.TextPrimary,
+                        maxLines  = 1,
+                        overflow  = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            // ── Favorite button ───────────────────────────────────────────────
+            IconButton(
+                onClick  = onFavoriteClick,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(AuroraColors.BgPrimary.copy(alpha = 0.6f))
+            ) {
+                Icon(
+                    imageVector = if (character.isFavorite) Icons.Default.Favorite
+                                  else Icons.Default.FavoriteBorder,
+                    contentDescription = if (character.isFavorite) "取消收藏" else "收藏",
+                    tint        = if (character.isFavorite) AuroraColors.Danger
+                                  else AuroraColors.TextSecondary,
+                    modifier    = Modifier.size(16.dp)
+                )
+            }
         }
     }
 }

@@ -1,25 +1,20 @@
 package com.beichenxing.aurora.presentation.navigation
 
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.consumeWindowInsets
-import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -31,130 +26,115 @@ import androidx.navigation.navArgument
 import com.beichenxing.aurora.presentation.character.CharacterListScreen
 import com.beichenxing.aurora.presentation.chat.ChatScreen
 import com.beichenxing.aurora.presentation.chats.ChatsScreen
+import com.beichenxing.aurora.presentation.common.component.AuroraNavBar
+import com.beichenxing.aurora.presentation.common.component.AuroraNavItem
+import com.beichenxing.aurora.presentation.common.theme.AuroraColors
 import com.beichenxing.aurora.presentation.settings.SettingsScreen
 
-private data class BottomNavItem(
-    val route: String,
-    val label: String,
-    val selectedIcon: ImageVector,
-    val unselectedIcon: ImageVector
-)
-
-private val bottomNavItems = listOf(
-    BottomNavItem(
-        route = NavRoutes.CharacterList.route,
-        label = "角色",
-        selectedIcon = Icons.Filled.Person,
-        unselectedIcon = Icons.Outlined.Person
+private val navItems = listOf(
+    AuroraNavItem(
+        route         = NavRoutes.CharacterList.route,
+        label         = "角色",
+        selectedIcon   = Icons.Filled.Person,
+        unselectedIcon = Icons.Outlined.PersonOutline
     ),
-    BottomNavItem(
-        route = NavRoutes.Chats.route,
-        label = "聊天回忆",
-        selectedIcon = Icons.Filled.ChatBubble,
+    AuroraNavItem(
+        route         = NavRoutes.Chats.route,
+        label         = "回忆",
+        selectedIcon   = Icons.Filled.ChatBubble,
         unselectedIcon = Icons.Outlined.ChatBubbleOutline
     ),
-    BottomNavItem(
-        route = NavRoutes.Settings.route,
-        label = "设置",
-        selectedIcon = Icons.Filled.Settings,
+    AuroraNavItem(
+        route         = NavRoutes.Settings.route,
+        label         = "设置",
+        selectedIcon   = Icons.Filled.Settings,
         unselectedIcon = Icons.Outlined.Settings
     )
 )
+
+// Routes where the bottom nav should be hidden (chat is full-screen)
+private val routesWithoutNav = setOf("chat/{characterId}/{chatId}")
 
 @Composable
 fun AuroraNavGraph() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+    val currentRoute = currentDestination?.route
 
-    val showBottomNav = bottomNavItems.any { item ->
+    val showNav = navItems.any { item ->
         currentDestination?.hierarchy?.any { it.route == item.route } == true
     }
 
+    // Use Scaffold with transparent bottom bar container so the
+    // floating nav bar overlays content edge-to-edge
     Scaffold(
-        bottomBar = {
-            if (showBottomNav) {
-                NavigationBar(
-                        windowInsets = WindowInsets.navigationBars
-                    ) {
-                    bottomNavItems.forEach { item ->
-                        val selected = currentDestination?.hierarchy
-                            ?.any { it.route == item.route } == true
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = {
-                                navController.navigate(item.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = {
-                                Icon(
-                                    if (selected) item.selectedIcon else item.unselectedIcon,
-                                    contentDescription = item.label
-                                )
-                            },
-                            label = { Text(item.label) }
-                        )
-                    }
+        containerColor = AuroraColors.Transparent,
+        bottomBar = {}  // empty — we draw AuroraNavBar manually as overlay
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            // ── Page content ──────────────────────────────────────────────────
+            NavHost(
+                navController    = navController,
+                startDestination = NavRoutes.CharacterList.route,
+                modifier         = Modifier.fillMaxSize()
+            ) {
+                composable(NavRoutes.CharacterList.route) {
+                    CharacterListScreen(
+                        onCharacterClick = { characterId ->
+                            navController.navigate(NavRoutes.Chat.route(characterId, "new"))
+                        }
+                    )
+                }
+
+                composable(NavRoutes.Chats.route) {
+                    ChatsScreen(
+                        onChatClick = { chatId, characterId ->
+                            navController.navigate(NavRoutes.Chat.route(characterId, chatId))
+                        }
+                    )
+                }
+
+                composable(NavRoutes.Settings.route) {
+                    SettingsScreen()
+                }
+
+                composable(
+                    route = NavRoutes.Chat.route,
+                    arguments = listOf(
+                        navArgument(NavRoutes.Chat.ARG_CHARACTER_ID) {
+                            type = NavType.StringType
+                        },
+                        navArgument(NavRoutes.Chat.ARG_CHAT_ID) {
+                            type = NavType.StringType
+                            defaultValue = "new"
+                        }
+                    )
+                ) {
+                    ChatScreen(onNavigateBack = { navController.popBackStack() })
                 }
             }
-        }
-    ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = NavRoutes.CharacterList.route
-        ) {
-            composable(NavRoutes.CharacterList.route) {
-                CharacterListScreen(
-                    modifier = Modifier
-                        .padding(innerPadding)
-                        .consumeWindowInsets(innerPadding),
-                    onCharacterClick = { characterId ->
-                        navController.navigate(
-                            NavRoutes.Chat.route(characterId, "new")
-                        )
-                    }
-                )
-            }
 
-            composable(NavRoutes.Chats.route) {
-                ChatsScreen(
-                    modifier = Modifier
-                        .padding(innerPadding)
-                        .consumeWindowInsets(innerPadding),
-                    onChatClick = { chatId, characterId ->
-                        navController.navigate(
-                            NavRoutes.Chat.route(characterId, chatId)
-                        )
-                    }
-                )
-            }
-
-            composable(NavRoutes.Settings.route) {
-                SettingsScreen(
-                    modifier = Modifier
-                        .padding(innerPadding)
-                        .consumeWindowInsets(innerPadding)
-                )
-            }
-
-            composable(
-                route = NavRoutes.Chat.route,
-                arguments = listOf(
-                    navArgument(NavRoutes.Chat.ARG_CHARACTER_ID) {
-                        type = NavType.StringType
+            // ── Floating nav bar overlay ───────────────────────────────────────
+            if (showNav) {
+                AuroraNavBar(
+                    items        = navItems,
+                    currentRoute = currentRoute,
+                    onItemClick  = { item ->
+                        navController.navigate(item.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState    = true
+                        }
                     },
-                    navArgument(NavRoutes.Chat.ARG_CHAT_ID) {
-                        type = NavType.StringType
-                        defaultValue = "new"
-                    }
+                    modifier = Modifier.align(Alignment.BottomCenter)
                 )
-            ) {
-                ChatScreen(onNavigateBack = { navController.popBackStack() })
             }
         }
     }
