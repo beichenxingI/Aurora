@@ -23,7 +23,9 @@ import javax.inject.Inject
 data class CharacterListUiState(
     val isLoading: Boolean = false,
     val importError: String? = null,
-    val importSuccess: String? = null
+    val importSuccess: String? = null,
+    val selectedCharacterId: String? = null,  // drives ModalBottomSheet
+    val showDeleteConfirm: Boolean = false
 )
 
 @HiltViewModel
@@ -32,7 +34,6 @@ class CharacterListViewModel @Inject constructor(
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
-    // Live list of all characters
     val characters: StateFlow<List<Character>> = characterRepository
         .observeAll()
         .stateIn(
@@ -44,12 +45,58 @@ class CharacterListViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(CharacterListUiState())
     val uiState: StateFlow<CharacterListUiState> = _uiState.asStateFlow()
 
+    // ─── Sheet ────────────────────────────────────────────────────────────────
+
+    fun selectCharacter(id: String) {
+        _uiState.update { it.copy(selectedCharacterId = id, showDeleteConfirm = false) }
+    }
+
+    fun dismissSheet() {
+        _uiState.update { it.copy(selectedCharacterId = null, showDeleteConfirm = false) }
+    }
+
+    // ─── Pin ──────────────────────────────────────────────────────────────────
+
+    fun togglePinned(characterId: String, currentValue: Boolean) {
+        viewModelScope.launch {
+            characterRepository.setPinned(characterId, !currentValue)
+        }
+    }
+
+    // ─── Favorite ─────────────────────────────────────────────────────────────
+
+    fun toggleFavorite(characterId: String, currentValue: Boolean) {
+        viewModelScope.launch {
+            characterRepository.setFavorite(characterId, !currentValue)
+        }
+    }
+
+    // ─── Delete ───────────────────────────────────────────────────────────────
+
+    fun requestDelete() {
+        _uiState.update { it.copy(showDeleteConfirm = true) }
+    }
+
+    fun cancelDelete() {
+        _uiState.update { it.copy(showDeleteConfirm = false) }
+    }
+
+    fun confirmDelete() {
+        val id = _uiState.value.selectedCharacterId ?: return
+        viewModelScope.launch {
+            try {
+                AvatarStorage.delete(context, id)
+                characterRepository.deleteById(id)
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to delete character $id")
+            } finally {
+                dismissSheet()
+            }
+        }
+    }
+
     // ─── Import ───────────────────────────────────────────────────────────────
 
-    /**
-     * Import character cards from one or more URIs.
-     * Supports PNG (V2/V3), CharX, and JSON formats.
-     */
     fun importFromUris(uris: List<Uri>) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, importError = null) }
@@ -61,17 +108,15 @@ class CharacterListViewModel @Inject constructor(
                 try {
                     val character = CharacterCardParser.parse(context, uri)
                     if (character != null) {
-                        // Try to extract and save avatar from the PNG file
                         val avatarPath = tryExtractAvatar(uri, character.id)
-                        val characterWithAvatar = if (avatarPath != null) {
+                        val withAvatar = if (avatarPath != null) {
                             character.copy(avatarPath = avatarPath)
                         } else {
                             character
                         }
-                        characterRepository.insert(characterWithAvatar)
+                        characterRepository.insert(withAvatar)
                         successCount++
                     } else {
-                        Timber.w("Could not parse character from: $uri")
                         failCount++
                     }
                 } catch (e: Exception) {
@@ -81,37 +126,15 @@ class CharacterListViewModel @Inject constructor(
             }
 
             val message = when {
-                successCount > 0 && failCount == 0 ->
-                    "成功导入 $successCount 个角色"
-                successCount > 0 && failCount > 0 ->
-                    "导入 $successCount 个成功，$failCount 个失败"
+                successCount > 0 && failCount == 0 -> "成功导入 $successCount 个角色"
+                successCount > 0 && failCount > 0  -> "导入 $successCount 个成功，$failCount 个失败"
                 else -> null
             }
-
-            val error = if (failCount > 0 && successCount == 0) {
-                "导入失败，请检查文件格式"
-            } else null
+            val error = if (failCount > 0 && successCount == 0) "导入失败，请检查文件格式" else null
 
             _uiState.update {
-                it.copy(
-                    isLoading = false,
-                    importSuccess = message,
-                    importError = error
-                )
+                it.copy(isLoading = false, importSuccess = message, importError = error)
             }
-        }
-    }
-
-    fun toggleFavorite(characterId: String, currentValue: Boolean) {
-        viewModelScope.launch {
-            characterRepository.setFavorite(characterId, !currentValue)
-        }
-    }
-
-    fun deleteCharacter(characterId: String) {
-        viewModelScope.launch {
-            AvatarStorage.delete(context, characterId)
-            characterRepository.deleteById(characterId)
         }
     }
 
@@ -125,9 +148,6 @@ class CharacterListViewModel @Inject constructor(
         return try {
             val inputStream = context.contentResolver.openInputStream(uri) ?: return null
             val bytes = inputStream.readBytes()
-
-            // Extract avatar from PNG: the actual image data IS the PNG
-            // so we save the first 512px of the PNG itself as avatar
             if (bytes.size > 8 &&
                 bytes[0] == 0x89.toByte() &&
                 bytes[1] == 0x50.toByte()
