@@ -3,6 +3,7 @@ package com.beichenxing.aurora.presentation.character
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -26,6 +28,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Person
@@ -39,7 +43,6 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -47,7 +50,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -57,10 +59,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.beichenxing.aurora.presentation.common.component.AuroraButton
@@ -79,7 +85,6 @@ fun CharacterListScreen(
     val characters by viewModel.characters.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents()
@@ -160,24 +165,20 @@ fun CharacterListScreen(
             }
         }
 
-        // ─── Character Detail ModalBottomSheet ─────────────────────────────────
+        // ─── Character Detail Dialog ───────────────────────────────────────────
         if (selectedCharacter != null) {
-            ModalBottomSheet(
-                onDismissRequest = { viewModel.dismissSheet() },
-                sheetState = sheetState
-            ) {
-                CharacterDetailSheetContent(
-                    character = selectedCharacter,
-                    onStartChat = {
-                        viewModel.dismissSheet()
-                        onCharacterClick(selectedCharacter.id)
-                    },
-                    onTogglePin = {
-                        viewModel.togglePinned(selectedCharacter.id, selectedCharacter.isPinned)
-                    },
-                    onDeleteRequest = { viewModel.requestDelete() }
-                )
-            }
+            CharacterDetailDialog(
+                character = selectedCharacter,
+                onDismiss = { viewModel.dismissSheet() },
+                onStartChat = {
+                    viewModel.dismissSheet()
+                    onCharacterClick(selectedCharacter.id)
+                },
+                onTogglePin = {
+                    viewModel.togglePinned(selectedCharacter.id, selectedCharacter.isPinned)
+                },
+                onDeleteRequest = { viewModel.requestDelete() }
+            )
         }
 
         // ─── Delete Confirm Dialog ─────────────────────────────────────────────
@@ -211,117 +212,229 @@ fun CharacterListScreen(
     }
 }
 
-// ─── Bottom Sheet Content ─────────────────────────────────────────────────────
+// ─── Character Detail Dialog ──────────────────────────────────────────────────
 
 @Composable
-private fun CharacterDetailSheetContent(
+private fun CharacterDetailDialog(
     character: Character,
+    onDismiss: () -> Unit,
     onStartChat: () -> Unit,
     onTogglePin: () -> Unit,
     onDeleteRequest: () -> Unit
 ) {
-    Column(
-        modifier              = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 32.dp),
-        horizontalAlignment   = Alignment.CenterHorizontally
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true
+        )
     ) {
-        // Avatar
         Box(
-            modifier         = Modifier
-                .size(100.dp)
-                .clip(CircleShape)
-                .background(AuroraColors.BgSoft),
-            contentAlignment = Alignment.Center
+            modifier = Modifier
+                .fillMaxWidth(0.82f)
+                .wrapContentHeight()
+                .clip(RoundedCornerShape(24.dp))
+                .background(AuroraColors.BgSurface)
+                .border(
+                    width = 1.dp,
+                    color = AuroraColors.Border,
+                    shape = RoundedCornerShape(24.dp)
+                )
         ) {
-            if (character.avatarPath != null) {
-                AsyncImage(
-                    model              = File(character.avatarPath),
-                    contentDescription = character.name,
-                    contentScale       = ContentScale.Crop,
-                    modifier           = Modifier.fillMaxSize()
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+
+                // ── Avatar hero image ─────────────────────────────────────
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(220.dp)
+                        .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                ) {
+                    if (character.avatarPath != null) {
+                        AsyncImage(
+                            model = File(character.avatarPath),
+                            contentDescription = character.name,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(AuroraColors.BgSoft),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = null,
+                                modifier = Modifier.size(72.dp),
+                                tint = AuroraColors.TextMuted
+                            )
+                        }
+                    }
+
+                    // Bottom scrim over hero image
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(60.dp)
+                            .align(Alignment.BottomCenter)
+                            .background(AuroraColors.CardNameScrim)
+                    )
+                }
+
+                // ── Name + subtitle ───────────────────────────────────────
+                Column(
+                    modifier = Modifier.padding(
+                        start = 20.dp, end = 20.dp,
+                        top = 16.dp, bottom = 0.dp
+                    ),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = character.name,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = AuroraColors.TextPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    val subtitle = character.creatorNotes
+                        .takeIf { it.isNotBlank() }
+                        ?: character.description.take(80).takeIf { it.isNotBlank() }
+
+                    if (subtitle != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AuroraColors.TextSecondary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // ── Start chat button ─────────────────────────────────────
+                AuroraButton(
+                    onClick = onStartChat,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .height(48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Chat,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "开始聊天",
+                        modifier = Modifier.padding(start = 8.dp),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // ── Divider ───────────────────────────────────────────────
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .height(1.dp)
+                        .background(AuroraColors.Border)
                 )
-            } else {
-                Icon(
-                    imageVector        = Icons.Default.Person,
-                    contentDescription = null,
-                    modifier           = Modifier.size(48.dp),
-                    tint               = AuroraColors.TextMuted
-                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // ── Action icon row ───────────────────────────────────────
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 20.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    // Pin / Unpin
+                    ActionIconButton(
+                        icon = Icons.Default.PushPin,
+                        label = if (character.isPinned) "取消置顶" else "置顶",
+                        tint = AuroraColors.Mint,
+                        onClick = onTogglePin
+                    )
+
+                    // Edit (placeholder for now)
+                    ActionIconButton(
+                        icon = Icons.Default.Edit,
+                        label = "编辑",
+                        tint = AuroraColors.Sky,
+                        onClick = { /* TODO: edit */ }
+                    )
+
+                    // Export (placeholder for now)
+                    ActionIconButton(
+                        icon = Icons.Default.FileUpload,
+                        label = "导出",
+                        tint = AuroraColors.Lilac,
+                        onClick = { /* TODO: export */ }
+                    )
+
+                    // Delete
+                    ActionIconButton(
+                        icon = Icons.Default.Delete,
+                        label = "删除",
+                        tint = AuroraColors.Danger,
+                        onClick = onDeleteRequest
+                    )
+                }
             }
         }
+    }
+}
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Text(
-            text       = character.name,
-            style      = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-            color      = AuroraColors.TextPrimary
-        )
-
-        val descriptionPreview = character.description.take(100)
-        val subtitle = character.creatorNotes.ifBlank { descriptionPreview }
-            .takeIf { it.isNotBlank() }
-        if (subtitle != null) {
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text      = subtitle,
-                style     = MaterialTheme.typography.bodyMedium,
-                color     = AuroraColors.TextSecondary,
-                maxLines  = 3,
-                overflow  = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier  = Modifier.padding(horizontal = 24.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // Start chat — uses AuroraButton shell
-        AuroraButton(
-            onClick  = onStartChat,
+@Composable
+private fun ActionIconButton(
+    icon: ImageVector,
+    label: String,
+    tint: androidx.compose.ui.graphics.Color,
+    onClick: () -> Unit
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .height(50.dp)
+                .size(44.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(tint.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
         ) {
             Icon(
-                Icons.Default.Chat,
-                contentDescription = null,
-                modifier           = Modifier.size(18.dp)
-            )
-            Text(
-                text       = "开始聊天",
-                modifier   = Modifier.padding(start = 8.dp),
-                fontWeight = FontWeight.SemiBold
+                imageVector = icon,
+                contentDescription = label,
+                tint = tint,
+                modifier = Modifier.size(20.dp)
             )
         }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Action row — uses AuroraIconTextButton shells
-        Row(
-            modifier              = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            AuroraIconTextButton(
-                icon     = Icons.Default.PushPin,
-                label    = if (character.isPinned) "取消置顶" else "置顶",
-                onClick  = onTogglePin,
-                modifier = Modifier.weight(1f),
-                tint     = AuroraColors.Mint
-            )
-            AuroraIconTextButton(
-                icon     = Icons.Default.Delete,
-                label    = "删除",
-                onClick  = onDeleteRequest,
-                modifier = Modifier.weight(1f),
-                tint     = AuroraColors.Danger
-            )
-        }
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            color = AuroraColors.TextSecondary,
+            fontWeight = FontWeight.Medium
+        )
     }
 }
 

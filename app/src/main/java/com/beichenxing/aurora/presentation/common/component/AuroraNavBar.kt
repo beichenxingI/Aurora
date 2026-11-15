@@ -64,16 +64,16 @@ fun AuroraNavBar(
         Row(
             modifier = Modifier
                 .wrapContentWidth()
-                .clip(RoundedCornerShape(28.dp))
+                .clip(RoundedCornerShape(100.dp))
                 // TODO Phase B: replace with blur + GlassBg
                 .background(AuroraColors.BgSoft)
                 .border(
                     width = 1.dp,
                     // TODO Phase B: GlassBorder
                     color = AuroraColors.Border,
-                    shape = RoundedCornerShape(28.dp)
+                    shape = RoundedCornerShape(100.dp)
                 )
-                .padding(horizontal = 6.dp, vertical = 6.dp),
+                .padding(horizontal = 8.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -103,7 +103,7 @@ private fun NavItem(
 
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(100.dp))
             .background(
                 // Inner pill for selected item
                 // TODO Phase B: AuroraAnimatedGradient brush
@@ -116,7 +116,7 @@ private fun NavItem(
                 onClick = onClick
             )
             .padding(
-                horizontal = if (isSelected) 18.dp else 16.dp,
+                horizontal = if (isSelected) 20.dp else 18.dp,
                 vertical = 10.dp
             ),
         contentAlignment = Alignment.Center
