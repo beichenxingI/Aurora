@@ -1,6 +1,5 @@
 package com.beichenxing.aurora.presentation.common.component
 
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -11,15 +10,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -42,13 +37,17 @@ data class AuroraNavItem(
 )
 
 /**
- * Aurora floating capsule navigation bar.
+ * Aurora floating pill navigation bar.
  *
- * Phase A: solid BgSoft background with Border outline + animated selection indicator
+ * Shape: compact pill, width wraps content (not full-width).
+ * Selection: inner pill highlight on selected item.
+ * Height: ~56dp.
+ *
+ * Phase A: solid BgSoft + Border + Mint highlight
  * TODO Phase B:
- *   - Replace background with RenderEffect blur (Android 12+) + GlassBg
- *   - Replace selection capsule solid color with AuroraAnimatedGradient brush
- *   - Add enter animation (slide up from bottom on first composition)
+ *   - Background: RenderEffect blur (Android 12+) + GlassBg
+ *   - Selection pill: AuroraAnimatedGradient brush
+ *   - Entrance: slide up animation on first composition
  */
 @Composable
 fun AuroraNavBar(
@@ -57,30 +56,30 @@ fun AuroraNavBar(
     onItemClick: (AuroraNavItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Outer pill container — wraps content width, centered
     Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 16.dp),
+        modifier = modifier.padding(bottom = 20.dp),
         contentAlignment = Alignment.Center
     ) {
-        // Capsule container
-        // TODO Phase B: add BlurMask / RenderEffect here
         Row(
             modifier = Modifier
-                .clip(RoundedCornerShape(100.dp))
-                .background(AuroraColors.BgSoft)  // TODO Phase B: GlassBg
+                .wrapContentWidth()
+                .clip(RoundedCornerShape(28.dp))
+                // TODO Phase B: replace with blur + GlassBg
+                .background(AuroraColors.BgSoft)
                 .border(
                     width = 1.dp,
-                    color = AuroraColors.Border,   // TODO Phase B: GlassBorder
-                    shape = RoundedCornerShape(100.dp)
+                    // TODO Phase B: GlassBorder
+                    color = AuroraColors.Border,
+                    shape = RoundedCornerShape(28.dp)
                 )
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                .padding(horizontal = 6.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             items.forEach { item ->
                 val isSelected = currentRoute == item.route
-                NavBarItem(
+                NavItem(
                     item = item,
                     isSelected = isSelected,
                     onClick = { onItemClick(item) }
@@ -91,33 +90,35 @@ fun AuroraNavBar(
 }
 
 @Composable
-private fun NavBarItem(
+private fun NavItem(
     item: AuroraNavItem,
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
-    // Animate icon scale on selection
     val iconScale by animateFloatAsState(
         targetValue = if (isSelected) 1.1f else 1.0f,
-        animationSpec = tween(durationMillis = 250),
-        label = "iconScale_${item.route}"
+        animationSpec = tween(250),
+        label = "scale_${item.route}"
     )
 
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(100.dp))
+            .clip(RoundedCornerShape(22.dp))
             .background(
-                // Selection highlight capsule
-                // TODO Phase B: replace with AuroraAnimatedGradient brush
-                color = if (isSelected) AuroraColors.Mint.copy(alpha = 0.18f)
-                        else AuroraColors.Transparent
+                // Inner pill for selected item
+                // TODO Phase B: AuroraAnimatedGradient brush
+                if (isSelected) AuroraColors.Mint.copy(alpha = 0.20f)
+                else AuroraColors.Transparent
             )
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() },
                 onClick = onClick
             )
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(
+                horizontal = if (isSelected) 18.dp else 16.dp,
+                vertical = 10.dp
+            ),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -128,7 +129,7 @@ private fun NavBarItem(
                 imageVector = if (isSelected) item.selectedIcon else item.unselectedIcon,
                 contentDescription = item.label,
                 modifier = Modifier
-                    .size(22.dp)
+                    .size(20.dp)
                     .scale(iconScale),
                 tint = if (isSelected) AuroraColors.Mint else AuroraColors.TextMuted
             )
