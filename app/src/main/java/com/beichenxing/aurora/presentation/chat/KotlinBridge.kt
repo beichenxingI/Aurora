@@ -14,22 +14,21 @@ import timber.log.Timber
  * Aurora Chat Protocol v1:
  *   JS → Kotlin: window.__auroraBridge.onMessage(jsonString)
  *   Kotlin → JS: window.__auroraDispatch(type, payloadObject)
- *
- * Message format: { "type": "...", "payload": { ... } }
  */
 class KotlinBridge(
     private val scope: CoroutineScope,
     private val onReady: () -> Unit,
     private val onUserInput: (text: String) -> Unit,
-    private val onStopGeneration: () -> Unit
+    private val onStopGeneration: () -> Unit,
+    private val onMessageLongPress: (messageId: String) -> Unit
 ) {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     @JavascriptInterface
     fun onMessage(jsonString: String) {
         try {
-            val root = json.parseToJsonElement(jsonString).jsonObject
-            val type = root["type"]?.jsonPrimitive?.content ?: return
+            val root    = json.parseToJsonElement(jsonString).jsonObject
+            val type    = root["type"]?.jsonPrimitive?.content ?: return
             val payload = root["payload"]?.jsonObject
 
             Timber.d("[Bridge ←] $type")
@@ -42,19 +41,22 @@ class KotlinBridge(
                     }
 
                     "userInput" -> {
-                        val text = payload?.get("text")?.jsonPrimitive?.content ?: return@launch
-                        if (text.isNotBlank()) {
-                            onUserInput(text)
-                        }
+                        val text = payload?.get("text")
+                            ?.jsonPrimitive?.content ?: return@launch
+                        if (text.isNotBlank()) onUserInput(text)
                     }
 
                     "stopGeneration" -> {
                         onStopGeneration()
                     }
 
-                    else -> {
-                        Timber.v("[Bridge] Unhandled: $type")
+                    "messageLongPress" -> {
+                        val id = payload?.get("id")
+                            ?.jsonPrimitive?.content ?: return@launch
+                        if (id.isNotBlank()) onMessageLongPress(id)
                     }
+
+                    else -> Timber.v("[Bridge] Unhandled: $type")
                 }
             }
         } catch (e: Exception) {

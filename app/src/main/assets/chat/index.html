@@ -74,6 +74,8 @@ html, body {
   border-radius: var(--radius);
   word-break: break-word;
   white-space: pre-wrap;
+  -webkit-touch-callout: none;
+  user-select: none;
 }
 .msg.user .bubble {
   background: var(--user-bg);
@@ -266,6 +268,12 @@ html, body {
         case 'streamError':   onStreamError(payload);   break;
         case 'setGenerating': onSetGenerating(payload); break;
         case 'clearMessages': onClearMessages();        break;
+        case 'updateMessage':
+            onUpdateMessage(payload);
+            break;
+        case 'removeMessage':
+            onRemoveMessage(payload);
+            break;
         default: console.warn('[Bridge] unknown type:', type);
       }
     } catch (e) {
@@ -331,6 +339,39 @@ html, body {
     listEl.innerHTML = '';
   }
 
+  // ── Handler: updateMessage ────────────────────────────────────
+  // payload: { id, content, reasoning? }
+  function onUpdateMessage(payload) {
+    var id = payload.id;
+    var content = payload.content || '';
+    var reasoning = payload.reasoning || '';
+
+    // Update in-memory array
+    var msg = messages.find(function(m) { return m.id === id; });
+    if (msg) {
+      msg.content = content;
+      msg.reasoning = reasoning;
+    }
+
+    // Re-render bubble in place
+    updateBubble(id, content, reasoning, false);
+  }
+
+  // ── Handler: removeMessage ────────────────────────────────────
+  // payload: { id }
+  function onRemoveMessage(payload) {
+    var id = payload.id;
+
+    // Remove from in-memory array
+    messages = messages.filter(function(m) { return m.id !== id; });
+
+    // Remove DOM element
+    var el = document.getElementById('msg-' + id);
+    if (el) {
+      el.remove();
+    }
+  }
+
   // ── Render all ────────────────────────────────────────────────
   function renderAll() {
     listEl.innerHTML = '';
@@ -342,6 +383,8 @@ html, body {
     var div    = document.createElement('div');
     div.className = 'msg ' + (msg.role || 'assistant');
     div.id    = 'msg-' + msg.id;
+    div.dataset.id = msg.id;
+    div.dataset.role = msg.role || 'assistant';
 
     var bubble = document.createElement('div');
     bubble.className = 'bubble';
@@ -502,6 +545,70 @@ html, body {
   // ── Ready ─────────────────────────────────────────────────────
   // Try to send ready immediately AND on window load,
   // in case __auroraBridge is registered before or after DOM load.
+  // ── Long-press detection ──────────────────────────────────────
+  // Uses pointer events on #message-list (event delegation).
+  // A press held for 500ms without moving triggers messageLongPress.
+  // Moving more than 8px cancels the timer (user is scrolling).
+
+  (function() {
+      var LONG_PRESS_MS = 500;
+      var MOVE_THRESHOLD = 8;
+      var timer = null;
+      var startX = 0;
+      var startY = 0;
+      var targetId = null;
+
+      function findMsgEl(el) {
+          // Walk up the DOM to find the .msg element with data-id
+          while (el && el !== listEl) {
+              if (el.dataset && el.dataset.id) return el;
+              el = el.parentElement;
+          }
+          return null;
+      }
+
+      function cancel() {
+          if (timer) {
+              clearTimeout(timer);
+              timer = null;
+          }
+          targetId = null;
+      }
+
+      listEl.addEventListener('pointerdown', function(e) {
+          cancel();
+          var msgEl = findMsgEl(e.target);
+          if (!msgEl) return;
+
+          // Only trigger on bubble, not on reasoning-block toggle
+          if (e.target.closest('.reasoning-block')) return;
+
+          targetId = msgEl.dataset.id;
+          startX = e.clientX;
+          startY = e.clientY;
+
+          timer = setTimeout(function() {
+              timer = null;
+              if (targetId) {
+                  send('messageLongPress', { id: targetId });
+                  targetId = null;
+              }
+          }, LONG_PRESS_MS);
+      });
+
+      listEl.addEventListener('pointermove', function(e) {
+          if (!timer) return;
+          var dx = e.clientX - startX;
+          var dy = e.clientY - startY;
+          if (dx * dx + dy * dy > MOVE_THRESHOLD * MOVE_THRESHOLD) {
+              cancel();
+          }
+      });
+
+      listEl.addEventListener('pointerup',     cancel);
+      listEl.addEventListener('pointercancel', cancel);
+  })();
+
   function tryReady() {
     if (window.__auroraBridge) {
       send('ready', {});
