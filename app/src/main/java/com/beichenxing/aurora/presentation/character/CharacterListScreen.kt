@@ -79,9 +79,10 @@ import java.io.File
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CharacterListScreen(
-    onCharacterClick: (String) -> Unit,
-    modifier: Modifier = Modifier,
-    viewModel: CharacterListViewModel = hiltViewModel()
+    onCharacterClick : (String) -> Unit,
+    onEditCharacter  : (String) -> Unit,
+    modifier         : Modifier = Modifier,
+    viewModel        : CharacterListViewModel = hiltViewModel()
 ) {
     val characters by viewModel.characters.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
@@ -174,16 +175,20 @@ fun CharacterListScreen(
         // ─── Character Detail Dialog ───────────────────────────────────────────
         if (selectedCharacter != null) {
             CharacterDetailDialog(
-                character = selectedCharacter,
-                onDismiss = { viewModel.dismissSheet() },
-                onStartChat = {
+                character       = selectedCharacter,
+                onDismiss       = { viewModel.dismissSheet() },
+                onStartChat     = {
                     viewModel.dismissSheet()
                     onCharacterClick(selectedCharacter.id)
                 },
-                onTogglePin = {
+                onTogglePin     = {
                     viewModel.togglePinned(selectedCharacter.id, selectedCharacter.isPinned)
                 },
-                onDeleteRequest = { viewModel.requestDelete() }
+                onDeleteRequest = { viewModel.requestDelete() },
+                onEditRequest   = {
+                    viewModel.dismissSheet()
+                    onEditCharacter(selectedCharacter.id)
+                }
             )
         }
 
@@ -222,11 +227,12 @@ fun CharacterListScreen(
 
 @Composable
 private fun CharacterDetailDialog(
-    character: Character,
-    onDismiss: () -> Unit,
-    onStartChat: () -> Unit,
-    onTogglePin: () -> Unit,
-    onDeleteRequest: () -> Unit
+    character       : Character,
+    onDismiss       : () -> Unit,
+    onStartChat     : () -> Unit,
+    onTogglePin     : () -> Unit,
+    onDeleteRequest : () -> Unit,
+    onEditRequest   : () -> Unit
 ) {
     AuroraDialog(
         onDismissRequest = onDismiss
@@ -365,7 +371,7 @@ private fun CharacterDetailDialog(
                         icon = Icons.Default.Edit,
                         label = "编辑",
                         tint = AuroraColors.Sky,
-                        onClick = { /* TODO: edit */ }
+                        onClick = onEditRequest
                     )
 
                     // Export (placeholder for now)

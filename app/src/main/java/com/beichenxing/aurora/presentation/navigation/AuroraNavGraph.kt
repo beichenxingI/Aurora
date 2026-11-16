@@ -25,6 +25,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.beichenxing.aurora.presentation.character.CharacterEditScreen
 import com.beichenxing.aurora.presentation.character.CharacterListScreen
 import com.beichenxing.aurora.presentation.chat.ChatScreen
 import com.beichenxing.aurora.presentation.chats.ChatsScreen
@@ -120,6 +121,11 @@ fun AuroraNavGraph() {
                                 navController.navigate(
                                     NavRoutes.Chat.route(characterId, "new")
                                 )
+                            },
+                            onEditCharacter = { characterId ->
+                                navController.navigate(
+                                    NavRoutes.CharacterEdit.route(characterId)
+                                )
                             }
                         )
                     }
@@ -136,6 +142,19 @@ fun AuroraNavGraph() {
 
                     composable(NavRoutes.Settings.route) {
                         SettingsScreen()
+                    }
+
+                    composable(
+                        route     = NavRoutes.CharacterEdit.route,
+                        arguments = listOf(
+                            navArgument(NavRoutes.CharacterEdit.ARG_CHARACTER_ID) {
+                                type = NavType.StringType
+                            }
+                        )
+                    ) {
+                        CharacterEditScreen(
+                            onNavigateBack = { navController.popBackStack() }
+                        )
                     }
 
                     composable(
