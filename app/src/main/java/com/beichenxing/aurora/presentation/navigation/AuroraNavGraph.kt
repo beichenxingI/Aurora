@@ -11,7 +11,10 @@ import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -53,46 +56,58 @@ private val navItems = listOf(
     )
 )
 
-private val routesWithoutNav = setOf(NavRoutes.Chat.route)
-
 @Composable
 fun AuroraNavGraph() {
-    val navController = rememberNavController()
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val navController      = rememberNavController()
+    val navBackStackEntry  by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
-    val currentRoute = currentDestination?.route
+    val currentRoute       = currentDestination?.route
+
+    val hazeState = remember { HazeState() }
+
+    // ── Track nav direction for aurora impulse ────────────────────────────
+    var previousRoute  by remember { mutableStateOf<String?>(null) }
+    var navImpulse     by remember { mutableFloatStateOf(0f) }
+    var impulseVersion by remember { mutableStateOf(0) }
+
+    // Calculate impulse direction when route changes
+    val currentIndex = navItems.indexOfFirst { item ->
+        currentDestination?.hierarchy?.any { it.route == item.route } == true
+    }
+    val previousIndex = navItems.indexOfFirst { it.route == previousRoute }
+
+    // On route change: compute direction and inject impulse
+    if (currentRoute != null &&
+        currentRoute != previousRoute &&
+        currentIndex >= 0 &&
+        previousIndex >= 0
+    ) {
+        val direction = if (currentIndex > previousIndex) 1f else -1f
+        navImpulse     = direction
+        impulseVersion = impulseVersion + 1
+        previousRoute  = currentRoute
+    } else if (previousRoute == null && currentRoute != null) {
+        previousRoute = currentRoute
+    }
 
     val showNav = navItems.any { item ->
         currentDestination?.hierarchy?.any { it.route == item.route } == true
     }
 
-    // HazeState shared between source (NavHost layer) and child (NavBar)
-    val hazeState = remember { HazeState() }
+    // Pass impulse keyed by version so LaunchedEffect re-triggers on same direction
+    val impulseKey = Pair(impulseVersion, navImpulse)
 
-    val selectedIndex = navItems.indexOfFirst { item ->
-        navBackStackEntry?.destination?.hierarchy
-            ?.any { it.route == item.route } == true
-    }.coerceAtLeast(0)
-
-    // Map index [0, 1, 2] to nudge [-0.6, 0, 0.6]
-    // Blob 2 (Sky) will gently drift toward the selected tab direction.
-    val nudge = when (selectedIndex) {
-        0    -> -0.6f
-        2    -> 0.6f
-        else -> 0f
-    }
-
-    AuroraBackground(blobNudge = nudge) {
-        // ── Outer Box: full screen overlay stack ─────────────────────────────
+    AuroraBackground(
+        navImpulse     = impulseKey.second,
+        impulseVersion = impulseKey.first
+    ) {
         Box(modifier = Modifier.fillMaxSize()) {
 
-            // ── LAYER 1: Page content (Haze SOURCE) ───────────────────────────
-            // NavBar is NOT inside this Box — this is critical.
-            // Haze 1.0.2 forbids hazeChild being a descendant of haze source.
+            // ── Page content (Haze SOURCE) ────────────────────────────────
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .haze(hazeState)         // source only contains page content
+                    .haze(hazeState)
             ) {
                 NavHost(
                     navController    = navController,
@@ -140,8 +155,7 @@ fun AuroraNavGraph() {
                 }
             }
 
-            // ── LAYER 2: NavBar overlay (Haze CHILD — sibling of source Box) ──
-            // Lives outside the .haze(hazeState) Box: no ancestor/descendant conflict.
+            // ── Nav bar overlay (Haze CHILD — sibling of source) ──────────
             if (showNav) {
                 AuroraNavBar(
                     items        = navItems,

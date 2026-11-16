@@ -1,12 +1,14 @@
 package com.beichenxing.aurora.presentation.common.component
 
 import android.provider.Settings
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseInOut
-import androidx.compose.animation.core.InfiniteTransition
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -14,39 +16,43 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.State
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.platform.LocalContext
 import com.beichenxing.aurora.presentation.common.theme.AuroraColors
-import com.beichenxing.aurora.presentation.common.theme.AuroraMotion
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
- * Aurora animated background — three elongated aurora light bands
- * drifting slowly across a deep navy base.
+ * Aurora light-curtain background.
  *
- * Visual design:
- * - Each blob is drawn as a wide ellipse (scaleX >> scaleY) with a radial gradient
- * - Slight rotation gives each band a natural tilt
- * - alpha is intentionally low-to-mid so backgrounds don't overwhelm content
- * - Colors are saturated but the dark navy base keeps overall brightness low
+ * Renders multiple diagonal light bands (like real aurora borealis curtains)
+ * using linearGradient strips at various angles.
  *
- * @param blobNudge  normalized [-1, 1] nudge applied to blob 2's X position.
- *                   Used by nav bar selection to gently shift the sky band.
+ * Layout:
+ *   - 7 bands total: 3 Mint, 2 Sky, 2 Lilac
+ *   - Each band is a full-screen-height diagonal strip
+ *   - Bands drift at different speeds (parallax feel)
+ *   - On nav selection change: impulse shifts all bands in the opposite direction,
+ *     then spring-decays back to base drift
+ *
+ * @param navImpulse  Normalized [-1, 1] directional impulse injected by nav changes.
+ *                    Positive = user moved right (bands shift left), negative = user moved left.
+ *                    Set to 0f when no nav change.
  */
 @Composable
 fun AuroraBackground(
     modifier: Modifier = Modifier,
-    blobNudge: Float = 0f,
+    navImpulse: Float = 0f,
+    impulseVersion: Int = 0,     // 新增这个参数
     content: @Composable BoxScope.() -> Unit
 ) {
     val context = LocalContext.current
@@ -59,56 +65,37 @@ fun AuroraBackground(
     }
     val animEnabled = animScale > 0f
 
+    // ── Slow base drift (infinite, very slow) ────────────────────────────
     val transition = if (animEnabled) {
         rememberInfiniteTransition(label = "aurora")
     } else null
 
-    // ── Blob 1: Mint band, top-left ───────────────────────────────────────
-    val b1x by animFloat(
-        transition,
-        0.08f,
-        0.38f,
-        AuroraMotion.BackgroundBlob1DurationMs
-    )
-    val b1y by animFloat(
-        transition,
-        0.05f,
-        0.32f,
-        AuroraMotion.BackgroundBlob1DurationMs
-    )
+    // Three independent drift offsets for parallax
+    // Each animates 0 -> 1 (fractional screen width) over a long cycle
+    val drift1 by animFloat(transition, 0f, 0.12f, 55_000)
+    val drift2 by animFloat(transition, 0f, 0.09f, 70_000)
+    val drift3 by animFloat(transition, 0f, 0.15f, 45_000)
 
-    // ── Blob 2: Sky band, center ──────────────────────────────────────────
-    val b2x by animFloat(
-        transition,
-        0.38f,
-        0.70f,
-        AuroraMotion.BackgroundBlob2DurationMs
-    )
-    val b2y by animFloat(
-        transition,
-        0.30f,
-        0.58f,
-        AuroraMotion.BackgroundBlob2DurationMs
-    )
+    // ── Impulse offset (spring-animated) ─────────────────────────────────
+    // When nav changes, inject a directional impulse then spring back to 0.
+    val impulseOffset = remember { Animatable(0f) }
 
-    // ── Blob 3: Lilac band, bottom-right ──────────────────────────────────
-    val b3x by animFloat(
-        transition,
-        0.55f,
-        0.90f,
-        AuroraMotion.BackgroundBlob3DurationMs
-    )
-    val b3y by animFloat(
-        transition,
-        0.55f,
-        0.82f,
-        AuroraMotion.BackgroundBlob3DurationMs
-    )
+    LaunchedEffect(impulseVersion) {
+        if (navImpulse == 0f) return@LaunchedEffect
+        // Snap to impulse position (bands jump toward opposite direction)
+        val target = -navImpulse * 0.14f  // max 14% screen width shift
+        impulseOffset.snapTo(target)
+        // Spring decay back to 0 (like a sloshing fluid settling)
+        impulseOffset.animateTo(
+            targetValue   = 0f,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessLow
+            )
+        )
+    }
 
-    // Nav nudge: blob 2 shifts ±8% of screen width toward selected tab
-    val nudge = blobNudge.coerceIn(-1f, 1f) *
-        AuroraMotion.BackgroundBlobNudgeMaxFraction
-    val b2xNudged = (b2x + nudge).coerceIn(0f, 1f)
+    val impulse = impulseOffset.value
 
     Box(
         modifier = modifier
@@ -117,37 +104,63 @@ fun AuroraBackground(
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
 
-            // Band 1 — Mint, top-left, tilted -12°
+            // ── Band definitions ──────────────────────────────────────────
+            // posX: center position as fraction of screen width
+            // Each group uses a different drift speed for parallax
+
+            // Mint group (fastest drift)
             drawAuroraBand(
-                cx        = size.width  * b1x,
-                cy        = size.height * b1y,
-                radiusX   = size.width  * 0.55f,
-                radiusY   = size.height * 0.18f,
-                rotation  = -12f,
-                color     = AuroraColors.Mint,
-                alpha     = AuroraMotion.AuroraBandMintAlpha
+                color   = AuroraColors.Mint,
+                angle   = 115f,
+                posX    = 0.10f + drift1 + impulse,
+                bandW   = 0.22f,
+                alpha   = 0.28f
+            )
+            drawAuroraBand(
+                color   = AuroraColors.Mint,
+                angle   = 118f,
+                posX    = 0.42f + drift1 * 0.7f + impulse * 0.8f,
+                bandW   = 0.18f,
+                alpha   = 0.20f
+            )
+            drawAuroraBand(
+                color   = AuroraColors.Mint,
+                angle   = 112f,
+                posX    = 0.75f + drift1 * 0.5f + impulse * 0.6f,
+                bandW   = 0.16f,
+                alpha   = 0.15f
             )
 
-            // Band 2 — Sky, center, tilted +8°
+            // Sky group (medium drift)
             drawAuroraBand(
-                cx        = size.width  * b2xNudged,
-                cy        = size.height * b2y,
-                radiusX   = size.width  * 0.65f,
-                radiusY   = size.height * 0.20f,
-                rotation  = 8f,
-                color     = AuroraColors.Sky,
-                alpha     = AuroraMotion.AuroraBandSkyAlpha
+                color   = AuroraColors.Sky,
+                angle   = 108f,
+                posX    = 0.25f + drift2 + impulse * 0.9f,
+                bandW   = 0.26f,
+                alpha   = 0.24f
+            )
+            drawAuroraBand(
+                color   = AuroraColors.Sky,
+                angle   = 111f,
+                posX    = 0.62f + drift2 * 0.8f + impulse * 0.7f,
+                bandW   = 0.20f,
+                alpha   = 0.18f
             )
 
-            // Band 3 — Lilac, bottom-right, tilted -6°
+            // Lilac group (slowest drift)
             drawAuroraBand(
-                cx        = size.width  * b3x,
-                cy        = size.height * b3y,
-                radiusX   = size.width  * 0.50f,
-                radiusY   = size.height * 0.16f,
-                rotation  = -6f,
-                color     = AuroraColors.Lilac,
-                alpha     = AuroraMotion.AuroraBandLilacAlpha
+                color   = AuroraColors.Lilac,
+                angle   = 105f,
+                posX    = 0.50f + drift3 + impulse * 0.85f,
+                bandW   = 0.24f,
+                alpha   = 0.20f
+            )
+            drawAuroraBand(
+                color   = AuroraColors.Lilac,
+                angle   = 120f,
+                posX    = 0.85f + drift3 * 0.6f + impulse * 0.5f,
+                bandW   = 0.19f,
+                alpha   = 0.14f
             )
         }
 
@@ -156,69 +169,63 @@ fun AuroraBackground(
 }
 
 /**
- * Draw a single aurora band — a rotated, elongated radial gradient.
+ * Draw one aurora light curtain band.
  *
- * The band is drawn by scaling the canvas so the circle appears elliptical:
- *   - scaleX = 1
- *   - scaleY = radiusY / radiusX
- * Then a radial gradient is drawn at the scaled center.
+ * The band is a diagonal strip spanning the full canvas height.
+ * It is rendered as a linearGradient perpendicular to the band's angle:
+ *   transparent → peak color → transparent
  *
- * The gradient has four stops: full alpha at center → half alpha at 45% →
- * faint at 75% → transparent at edge.
+ * @param color   Band color (from AuroraColors)
+ * @param angle   Band orientation in degrees (90 = vertical, 115 = tilted left)
+ * @param posX    Center of band as fraction of canvas width [0..1], can exceed bounds
+ * @param bandW   Width of band as fraction of canvas width
+ * @param alpha   Peak alpha at band center
  */
 private fun DrawScope.drawAuroraBand(
-    cx       : Float,
-    cy       : Float,
-    radiusX  : Float,
-    radiusY  : Float,
-    rotation : Float,
-    color    : Color,
-    alpha    : Float
+    color : Color,
+    angle : Float,
+    posX  : Float,
+    bandW : Float,
+    alpha : Float
 ) {
-    if (radiusX <= 0f || radiusY <= 0f) return
+    val cx    = size.width * posX
+    val halfW = size.width * bandW * 0.5f
+    val h     = size.height
 
-    val baseRadius = radiusX
+    // Direction perpendicular to the band (the gradient direction)
+    val rad   = Math.toRadians((angle - 90.0))
+    val perpX = cos(rad).toFloat()
+    val perpY = sin(rad).toFloat()
 
-    rotate(degrees = rotation, pivot = Offset(cx, cy)) {
-        scale(
-            scaleX = 1f,
-            scaleY = radiusY / radiusX,
-            pivot  = Offset(cx, cy)
-        ) {
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colorStops = arrayOf(
-                        0.00f to color.copy(alpha = alpha),
-                        0.45f to color.copy(
-                            alpha = alpha * AuroraMotion.AuroraBandMidAlphaFactor
-                        ),
-                        0.75f to color.copy(
-                            alpha = alpha * AuroraMotion.AuroraBandOuterAlphaFactor
-                        ),
-                        1.00f to AuroraColors.Transparent
-                    ),
-                    center   = Offset(cx, cy),
-                    radius   = baseRadius,
-                    tileMode = TileMode.Clamp
-                ),
-                radius = baseRadius,
-                center = Offset(cx, cy)
-            )
-        }
-    }
+    // Gradient start/end points (perpendicular to band direction)
+    val gradStart = Offset(cx - perpX * halfW, h * 0.5f - perpY * halfW)
+    val gradEnd   = Offset(cx + perpX * halfW, h * 0.5f + perpY * halfW)
+
+    drawRect(
+        brush   = Brush.linearGradient(
+            colorStops = arrayOf(
+                0.00f to color.copy(alpha = 0f),
+                0.30f to color.copy(alpha = alpha * 0.5f),
+                0.50f to color.copy(alpha = alpha),
+                0.70f to color.copy(alpha = alpha * 0.5f),
+                1.00f to color.copy(alpha = 0f)
+            ),
+            start = gradStart,
+            end   = gradEnd
+        ),
+        topLeft = Offset(0f, 0f),
+        size    = Size(size.width, h)
+    )
 }
 
-/**
- * Helper: returns an animated float if [transition] is non-null,
- * or a static mid-value State if animations are disabled.
- */
+/** Returns animated float state, or static mid-value if animations disabled. */
 @Composable
 private fun animFloat(
-    transition : InfiniteTransition?,
+    transition : androidx.compose.animation.core.InfiniteTransition?,
     from       : Float,
     to         : Float,
     durationMs : Int
-): State<Float> {
+): androidx.compose.runtime.State<Float> {
     return if (transition != null) {
         transition.animateFloat(
             initialValue  = from,
