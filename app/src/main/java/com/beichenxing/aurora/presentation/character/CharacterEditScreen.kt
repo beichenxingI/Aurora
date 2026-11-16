@@ -13,6 +13,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -284,44 +285,58 @@ private fun AvatarPicker(
     onClick    : () -> Unit
 ) {
     Box(
-        modifier         = Modifier
-            .size(110.dp)
-            .clip(CircleShape)
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(220.dp)
+            .clip(RoundedCornerShape(16.dp))
             .background(AuroraColors.BgSoft)
-            .border(2.dp, AuroraColors.Border, CircleShape)
+            .border(1.dp, AuroraColors.Border, RoundedCornerShape(16.dp))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         if (avatarPath != null) {
+            // ContentScale.Fit: show full image without cropping,
+            // letterbox if aspect ratio differs from container
             AsyncImage(
                 model              = File(avatarPath),
-                contentDescription = "头像",
-                contentScale       = ContentScale.Crop,
+                contentDescription = "角色封面",
+                contentScale       = ContentScale.Fit,
                 modifier           = Modifier.fillMaxSize()
             )
         } else {
-            Icon(
-                imageVector        = Icons.Default.Person,
-                contentDescription = null,
-                tint               = AuroraColors.TextMuted,
-                modifier           = Modifier.size(48.dp)
-            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector        = Icons.Default.Person,
+                    contentDescription = null,
+                    tint               = AuroraColors.TextMuted,
+                    modifier           = Modifier.size(56.dp)
+                )
+                Text(
+                    text  = "点击选择封面图",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AuroraColors.TextMuted
+                )
+            }
         }
 
-        // Camera overlay
+        // Camera badge — bottom-right corner
         Box(
-            modifier         = Modifier
+            modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .size(32.dp)
+                .padding(10.dp)
+                .size(34.dp)
                 .clip(CircleShape)
                 .background(AuroraColors.Mint),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector        = Icons.Default.CameraAlt,
-                contentDescription = "更换头像",
+                contentDescription = "更换封面图",
                 tint               = AuroraColors.BgPrimary,
-                modifier           = Modifier.size(16.dp)
+                modifier           = Modifier.size(18.dp)
             )
         }
     }
