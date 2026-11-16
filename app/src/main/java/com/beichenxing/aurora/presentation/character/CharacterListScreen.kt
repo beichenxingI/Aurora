@@ -65,13 +65,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.beichenxing.aurora.presentation.common.component.AuroraButton
+import com.beichenxing.aurora.presentation.common.component.AuroraDialog
 import com.beichenxing.aurora.presentation.common.component.AuroraIconTextButton
 import com.beichenxing.aurora.presentation.common.theme.AuroraColors
+import com.beichenxing.aurora.presentation.common.theme.AuroraMotion
 import com.beichenxing.aurora.domain.model.Character
 import java.io.File
 
@@ -106,6 +106,7 @@ fun CharacterListScreen(
 
     Box(modifier = modifier) {
         Scaffold(
+            containerColor = AuroraColors.Transparent,
             topBar = {
                 TopAppBar(title = { Text("角色") })
             },
@@ -152,7 +153,7 @@ fun CharacterListScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.4f)),
+                            .background(AuroraColors.LoadingScrim),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -222,29 +223,12 @@ private fun CharacterDetailDialog(
     onTogglePin: () -> Unit,
     onDeleteRequest: () -> Unit
 ) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true
-        )
+    AuroraDialog(
+        onDismissRequest = onDismiss
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(0.82f)
-                .wrapContentHeight()
-                .clip(RoundedCornerShape(24.dp))
-                .background(AuroraColors.BgSurface)
-                .border(
-                    width = 1.dp,
-                    color = AuroraColors.Border,
-                    shape = RoundedCornerShape(24.dp)
-                )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
 
                 // ── Avatar hero image ─────────────────────────────────────
                 Box(
@@ -395,7 +379,6 @@ private fun CharacterDetailDialog(
                         onClick = onDeleteRequest
                     )
                 }
-            }
         }
     }
 }
@@ -419,7 +402,7 @@ private fun ActionIconButton(
             modifier = Modifier
                 .size(44.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(tint.copy(alpha = 0.12f)),
+                .background(tint.copy(alpha = AuroraMotion.ActionTintAlpha)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -530,7 +513,7 @@ private fun CharacterCard(
                     .padding(6.dp)
                     .size(32.dp)
                     .clip(CircleShape)
-                    .background(AuroraColors.BgPrimary.copy(alpha = 0.6f))
+                    .background(AuroraColors.CardOverlay)
             ) {
                 Icon(
                     imageVector = if (character.isFavorite) Icons.Default.Favorite

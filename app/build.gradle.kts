@@ -111,4 +111,7 @@ dependencies {
 
     // Material Components XML themes
     implementation(libs.material)
+
+    // Backdrop blur (glass surfaces)
+    implementation(libs.haze)
 }

@@ -49,6 +49,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.beichenxing.aurora.presentation.common.theme.AuroraColors
 import coil.compose.AsyncImage
 import java.io.File
 import java.text.SimpleDateFormat
@@ -67,6 +68,7 @@ fun ChatsScreen(
 
     Box(modifier = modifier) {
         Scaffold(
+            containerColor = AuroraColors.Transparent,
             topBar = {
                 TopAppBar(title = { Text("聊天回忆") })
             }

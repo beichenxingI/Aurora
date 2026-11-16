@@ -1,39 +1,60 @@
 package com.beichenxing.aurora.presentation.common.component
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.beichenxing.aurora.presentation.common.theme.AuroraColors
+import com.beichenxing.aurora.presentation.common.theme.AuroraMotion
+import com.beichenxing.aurora.presentation.common.theme.rememberSystemAnimationsEnabled
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  AuroraButton
-//  Phase A: solid Mint background
-//  TODO Phase B: replace background with animated AuroraGradient brush
+//  Slow animated aurora gradient, press scale, ripple, accessible click target.
 // ═════════════════════════════════════════════════════════════════════════════
 @Composable
 fun AuroraButton(
@@ -43,28 +64,99 @@ fun AuroraButton(
     contentPadding: PaddingValues = PaddingValues(horizontal = 24.dp, vertical = 14.dp),
     content: @Composable RowScope.() -> Unit
 ) {
-    Button(
-        onClick = onClick,
-        modifier = modifier,
-        enabled = enabled,
-        shape = RoundedCornerShape(12.dp),
-        contentPadding = contentPadding,
-        colors = ButtonDefaults.buttonColors(
-            // Phase A: solid accent
-            // TODO Phase B: use Box + AuroraAnimatedGradient brush as background
-            containerColor = AuroraColors.Mint,
-            contentColor   = AuroraColors.BgPrimary,
-            disabledContainerColor = AuroraColors.Border,
-            disabledContentColor   = AuroraColors.TextMuted
+    val animationsEnabled = rememberSystemAnimationsEnabled()
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+
+    val animatedScale by animateFloatAsState(
+        targetValue = if (pressed) AuroraMotion.ButtonPressScale else 1f,
+        animationSpec = spring(
+            dampingRatio = AuroraMotion.ButtonPressDampingRatio,
+            stiffness = AuroraMotion.ButtonPressStiffness
         ),
-        content = content
+        label = "aurora_button_press"
     )
+
+    val gradientProgress: State<Float> = if (animationsEnabled && enabled) {
+        val transition = rememberInfiniteTransition(label = "aurora_button_gradient")
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(
+                    durationMillis = AuroraMotion.ButtonGradientDurationMs,
+                    easing = LinearEasing
+                ),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "aurora_button_gradient_progress"
+        )
+    } else {
+        remember { mutableFloatStateOf(0.5f) }
+    }
+
+    val shape = RoundedCornerShape(12.dp)
+    val indication = LocalIndication.current
+    val scale = if (animationsEnabled) animatedScale else 1f
+
+    Box(
+        modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(shape)
+            .drawBehind {
+                if (!enabled) {
+                    drawRect(AuroraColors.Border)
+                } else {
+                    val shift =
+                        size.width * AuroraMotion.ButtonGradientShiftFraction *
+                            gradientProgress.value
+                    drawRect(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                AuroraColors.Mint,
+                                AuroraColors.Sky,
+                                AuroraColors.Lilac
+                            ),
+                            start = Offset(
+                                size.width * AuroraMotion.ButtonGradientStartOffsetFraction + shift,
+                                0f
+                            ),
+                            end = Offset(
+                                size.width * AuroraMotion.ButtonGradientEndOffsetFraction + shift,
+                                size.height
+                            )
+                        )
+                    )
+                }
+            }
+            .clickable(
+                enabled = enabled,
+                interactionSource = interactionSource,
+                indication = indication,
+                role = Role.Button,
+                onClick = onClick
+            )
+            .padding(contentPadding)
+    ) {
+        CompositionLocalProvider(
+            LocalContentColor provides if (enabled) AuroraColors.BgPrimary
+                                    else AuroraColors.TextMuted
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+                content = content
+            )
+        }
+    }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  AuroraOutlinedButton
-//  Phase A: bordered with Mint outline
-//  TODO Phase B: animated gradient border
+//  Phase B keeps this static to avoid visual over-animation.
 // ═════════════════════════════════════════════════════════════════════════════
 @Composable
 fun AuroraOutlinedButton(
@@ -80,13 +172,15 @@ fun AuroraOutlinedButton(
         enabled = enabled,
         shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.outlinedButtonColors(
-            contentColor   = contentColor,
+            contentColor = contentColor,
             disabledContentColor = AuroraColors.TextMuted
         ),
         border = androidx.compose.foundation.BorderStroke(
             width = 1.dp,
-            // TODO Phase B: replace with animated gradient border brush
-            color = contentColor.copy(alpha = if (enabled) 0.6f else 0.2f)
+            color = contentColor.copy(
+                alpha = if (enabled) AuroraMotion.OutlinedBorderEnabledAlpha
+                        else AuroraMotion.OutlinedBorderDisabledAlpha
+            )
         ),
         content = content
     )
@@ -94,8 +188,7 @@ fun AuroraOutlinedButton(
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  AuroraSurface
-//  Phase A: solid BgSoft + Border outline
-//  TODO Phase B: RenderEffect blur + GlassBg + GlassBorder
+//  Low-cost translucent glass surface (no backdrop blur for list cards).
 // ═════════════════════════════════════════════════════════════════════════════
 @Composable
 fun AuroraSurface(
@@ -108,20 +201,18 @@ fun AuroraSurface(
             .clip(RoundedCornerShape(cornerRadius))
             .border(
                 width = 1.dp,
-                // TODO Phase B: replace with GlassBorder
-                color = AuroraColors.Border,
+                color = AuroraColors.GlassBorder,
                 shape = RoundedCornerShape(cornerRadius)
             ),
-        shape    = RoundedCornerShape(cornerRadius),
-        // TODO Phase B: replace with GlassBg + blur
-        color    = AuroraColors.BgSoft,
-        content  = content
+        shape = RoundedCornerShape(cornerRadius),
+        color = AuroraColors.GlassBg,
+        content = content
     )
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  AuroraIconTextButton
-//  Icon + label vertical layout, used in action rows (pin, delete, etc.)
+//  Icon + label row button.
 // ═════════════════════════════════════════════════════════════════════════════
 @Composable
 fun AuroraIconTextButton(

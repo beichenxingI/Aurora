@@ -49,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.beichenxing.aurora.domain.model.LlmConfig
+import com.beichenxing.aurora.presentation.common.theme.AuroraColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -62,6 +63,7 @@ fun SettingsScreen(
 
     Box(modifier = modifier) {
         Scaffold(
+        containerColor = AuroraColors.Transparent,
         topBar = {
             TopAppBar(title = { Text("设置") })
         }

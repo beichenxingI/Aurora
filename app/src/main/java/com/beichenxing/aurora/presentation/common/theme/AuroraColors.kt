@@ -41,7 +41,14 @@ object AuroraColors {
     // ── Glass ─────────────────────────────────────────────────────────────────
     // Phase B: replace with actual blur compositing
     val GlassBg     = Color(0x801C2E3F)   // 50 % BgSoft
-    val GlassBorder = Color(0x26FFFFFF)   // 15 % white
+    val GlassBorder = TextPrimary.copy(alpha = AuroraMotion.GlassBorderAlpha)
+    val GlassWhiteTint = TextPrimary.copy(alpha = AuroraMotion.GlassWhiteTintAlpha)
+    val GlassTopHighlight = TextPrimary.copy(alpha = AuroraMotion.GlassTopHighlightAlpha)
+    val NavSweep = TextPrimary.copy(alpha = AuroraMotion.NavSweepPeakAlpha)
+    val DialogScrim = BgPrimary.copy(alpha = AuroraMotion.DialogScrimAlpha)
+    val Shadow = BgPrimary.copy(alpha = AuroraMotion.ShadowAlpha)
+    val LoadingScrim = BgPrimary.copy(alpha = AuroraMotion.LoadingScrimAlpha)
+    val CardOverlay = BgPrimary.copy(alpha = AuroraMotion.CardOverlayAlpha)
 
     // ── Utility ───────────────────────────────────────────────────────────────
     val Transparent = Color(0x00000000)
@@ -66,9 +73,9 @@ object AuroraColors {
     val AuroraSubtleGradient: Brush
         get() = Brush.linearGradient(
             colors = listOf(
-                Mint.copy(alpha = 0.15f),
-                Sky.copy(alpha = 0.08f),
-                Lilac.copy(alpha = 0.12f)
+                Mint.copy(alpha = AuroraMotion.AuroraSubtleMintAlpha),
+                Sky.copy(alpha = AuroraMotion.AuroraSubtleSkyAlpha),
+                Lilac.copy(alpha = AuroraMotion.AuroraSubtleLilacAlpha)
             ),
             start = Offset(0f, 0f),
             end = Offset(800f, 800f)
@@ -81,7 +88,7 @@ object AuroraColors {
         get() = Brush.verticalGradient(
             colors = listOf(
                 Color.Transparent,
-                BgPrimary.copy(alpha = 0.85f),
+                BgPrimary.copy(alpha = AuroraMotion.CardNameScrimMidAlpha),
                 BgPrimary
             )
         )
