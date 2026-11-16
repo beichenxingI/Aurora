@@ -92,17 +92,4 @@ object AuroraColors {
                 BgPrimary
             )
         )
-
-    // ── Mesh gradient corner colors ───────────────────────────────────────────
-    // These are low-saturation, white-shifted aurora tones used ONLY for the
-    // background mesh. Never use these for UI components.
-    // The base is a warm deep blue-grey (not pure black) so colors feel
-    // "embedded in" the background rather than "floating on top of" it.
-
-    val MeshBase    = Color(0xFF141C2B)  // warm deep navy (base background)
-    val MeshMint    = Color(0xFF1D3832)  // deep mint-teal, very dark
-    val MeshSky     = Color(0xFF182535)  // deep sky-blue, very dark
-    val MeshLilac   = Color(0xFF211C35)  // deep lilac, very dark
-    val MeshWarm    = Color(0xFF1E1A28)  // warm dark purple-grey (暖色点缀)
-    val MeshNeutral = Color(0xFF161D2C)  // neutral dark blue-grey
 }
