@@ -1,17 +1,14 @@
 package com.beichenxing.aurora.presentation.common.component
 
 import android.provider.Settings
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseInOut
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,40 +20,45 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.platform.LocalContext
 import com.beichenxing.aurora.presentation.common.theme.AuroraColors
-import kotlin.math.cos
-import kotlin.math.sin
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
 
 /**
- * Aurora light-curtain background.
+ * Aurora Mesh Gradient Background.
  *
- * Renders multiple diagonal light bands (like real aurora borealis curtains)
- * using linearGradient strips at various angles.
+ * Renders a full-screen mesh gradient using bilinear interpolation across
+ * a 4-corner color grid. The colors slowly drift between aurora-tinted dark
+ * tones, producing the soft "color embedded in darkness" effect — no visible
+ * light blobs, no hard edges, just a living color field.
  *
- * Layout:
- *   - 7 bands total: 3 Mint, 2 Sky, 2 Lilac
- *   - Each band is a full-screen-height diagonal strip
- *   - Bands drift at different speeds (parallax feel)
- *   - On nav selection change: impulse shifts all bands in the opposite direction,
- *     then spring-decays back to base drift
+ * Visual design:
+ * - Base: warm deep navy (#141C2B), not pure black
+ * - Four corners hold aurora-tinted dark colors (mint / sky / lilac / warm)
+ * - Colors interpolate smoothly across the full screen
+ * - Each corner animates independently on a long cycle (40–70s)
+ * - On nav change: a directional impulse nudges the color field,
+ *   then springs back — giving the sensation of the background
+ *   responding to navigation
  *
- * @param navImpulse  Normalized [-1, 1] directional impulse injected by nav changes.
- *                    Positive = user moved right (bands shift left), negative = user moved left.
- *                    Set to 0f when no nav change.
+ * Mesh resolution: 24×24 cells — enough for smooth gradients,
+ * cheap enough for 60fps on any modern device.
+ *
+ * @param navImpulse      Normalized [-1,1]. Positive = nav moved right.
+ * @param impulseVersion  Increments each time an impulse should fire.
  */
 @Composable
 fun AuroraBackground(
-    modifier: Modifier = Modifier,
-    navImpulse: Float = 0f,
-    impulseVersion: Int = 0,     // 新增这个参数
-    content: @Composable BoxScope.() -> Unit
+    modifier       : Modifier = Modifier,
+    navImpulse     : Float    = 0f,
+    impulseVersion : Int      = 0,
+    content        : @Composable BoxScope.() -> Unit
 ) {
-    val context = LocalContext.current
-    val animScale = remember {
+    val context    = LocalContext.current
+    val animScale  = remember {
         Settings.Global.getFloat(
             context.contentResolver,
             Settings.Global.ANIMATOR_DURATION_SCALE,
@@ -65,160 +67,152 @@ fun AuroraBackground(
     }
     val animEnabled = animScale > 0f
 
-    // ── Slow base drift (infinite, very slow) ────────────────────────────
     val transition = if (animEnabled) {
-        rememberInfiniteTransition(label = "aurora")
+        rememberInfiniteTransition(label = "mesh_aurora")
     } else null
 
-    // Three independent drift offsets for parallax
-    // Each animates 0 -> 1 (fractional screen width) over a long cycle
-    val drift1 by animFloat(transition, 0f, 0.12f, 55_000)
-    val drift2 by animFloat(transition, 0f, 0.09f, 70_000)
-    val drift3 by animFloat(transition, 0f, 0.15f, 45_000)
+    // ── Per-corner color phase animations ────────────────────────────────
+    // Each corner oscillates between two dark aurora-tinted colors.
+    // Different durations create slow, organic drift.
 
-    // ── Impulse offset (spring-animated) ─────────────────────────────────
-    // When nav changes, inject a directional impulse then spring back to 0.
+    // Top-left: MeshMint <-> MeshNeutral (55s)
+    val tlPhase by animFloat(transition, 0f, 1f, 55_000)
+
+    // Top-right: MeshSky <-> MeshWarm (68s)
+    val trPhase by animFloat(transition, 1f, 0f, 68_000)
+
+    // Bottom-left: MeshLilac <-> MeshNeutral (47s)
+    val blPhase by animFloat(transition, 0f, 1f, 47_000)
+
+    // Bottom-right: MeshSky <-> MeshMint (61s)
+    val brPhase by animFloat(transition, 1f, 0f, 61_000)
+
+    // Center: MeshWarm <-> MeshLilac (53s)
+    val cPhase by animFloat(transition, 0f, 1f, 53_000)
+
+    // ── Nav impulse as UV offset ──────────────────────────────────────────
+    // A horizontal impulse shifts the mesh UV coordinates slightly,
+    // making the color field appear to "slide" in the opposite direction.
     val impulseOffset = remember { Animatable(0f) }
 
     LaunchedEffect(impulseVersion) {
         if (navImpulse == 0f) return@LaunchedEffect
-        // Snap to impulse position (bands jump toward opposite direction)
-        val target = -navImpulse * 0.14f  // max 14% screen width shift
+        val target = -navImpulse * 0.06f   // max 6% UV shift
         impulseOffset.snapTo(target)
-        // Spring decay back to 0 (like a sloshing fluid settling)
         impulseOffset.animateTo(
             targetValue   = 0f,
             animationSpec = spring(
                 dampingRatio = Spring.DampingRatioMediumBouncy,
-                stiffness = Spring.StiffnessLow
+                stiffness    = Spring.StiffnessLow
             )
         )
     }
 
-    val impulse = impulseOffset.value
+    val uShift = impulseOffset.value
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(AuroraColors.BgPrimary)
-    ) {
+    // ── Compute current corner colors ─────────────────────────────────────
+    val colorTL = lerpColor(AuroraColors.MeshMint,  AuroraColors.MeshNeutral, tlPhase)
+    val colorTR = lerpColor(AuroraColors.MeshSky,   AuroraColors.MeshWarm,    trPhase)
+    val colorBL = lerpColor(AuroraColors.MeshLilac, AuroraColors.MeshNeutral, blPhase)
+    val colorBR = lerpColor(AuroraColors.MeshSky,   AuroraColors.MeshMint,    brPhase)
+    val colorC  = lerpColor(AuroraColors.MeshWarm,  AuroraColors.MeshLilac,   cPhase)
+
+    Box(modifier = modifier.fillMaxSize()) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-
-            // ── Band definitions ──────────────────────────────────────────
-            // posX: center position as fraction of screen width
-            // Each group uses a different drift speed for parallax
-
-            // Mint group (fastest drift)
-            drawAuroraBand(
-                color   = AuroraColors.Mint,
-                angle   = 115f,
-                posX    = 0.10f + drift1 + impulse,
-                bandW   = 0.22f,
-                alpha   = 0.28f
-            )
-            drawAuroraBand(
-                color   = AuroraColors.Mint,
-                angle   = 118f,
-                posX    = 0.42f + drift1 * 0.7f + impulse * 0.8f,
-                bandW   = 0.18f,
-                alpha   = 0.20f
-            )
-            drawAuroraBand(
-                color   = AuroraColors.Mint,
-                angle   = 112f,
-                posX    = 0.75f + drift1 * 0.5f + impulse * 0.6f,
-                bandW   = 0.16f,
-                alpha   = 0.15f
-            )
-
-            // Sky group (medium drift)
-            drawAuroraBand(
-                color   = AuroraColors.Sky,
-                angle   = 108f,
-                posX    = 0.25f + drift2 + impulse * 0.9f,
-                bandW   = 0.26f,
-                alpha   = 0.24f
-            )
-            drawAuroraBand(
-                color   = AuroraColors.Sky,
-                angle   = 111f,
-                posX    = 0.62f + drift2 * 0.8f + impulse * 0.7f,
-                bandW   = 0.20f,
-                alpha   = 0.18f
-            )
-
-            // Lilac group (slowest drift)
-            drawAuroraBand(
-                color   = AuroraColors.Lilac,
-                angle   = 105f,
-                posX    = 0.50f + drift3 + impulse * 0.85f,
-                bandW   = 0.24f,
-                alpha   = 0.20f
-            )
-            drawAuroraBand(
-                color   = AuroraColors.Lilac,
-                angle   = 120f,
-                posX    = 0.85f + drift3 * 0.6f + impulse * 0.5f,
-                bandW   = 0.19f,
-                alpha   = 0.14f
+            drawMeshGradient(
+                tl     = colorTL,
+                tr     = colorTR,
+                bl     = colorBL,
+                br     = colorBR,
+                center = colorC,
+                uShift = uShift,
+                cells  = 24
             )
         }
-
         content()
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Mesh gradient renderer
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * Draw one aurora light curtain band.
+ * Draw a mesh gradient across the full canvas.
  *
- * The band is a diagonal strip spanning the full canvas height.
- * It is rendered as a linearGradient perpendicular to the band's angle:
- *   transparent → peak color → transparent
+ * Uses a 5-point color grid (4 corners + 1 center) with bilinear
+ * interpolation. The center point blends in to break the strict linearity
+ * of a pure 4-corner gradient, adding more organic variation.
  *
- * @param color   Band color (from AuroraColors)
- * @param angle   Band orientation in degrees (90 = vertical, 115 = tilted left)
- * @param posX    Center of band as fraction of canvas width [0..1], can exceed bounds
- * @param bandW   Width of band as fraction of canvas width
- * @param alpha   Peak alpha at band center
+ * @param tl, tr, bl, br  Corner colors
+ * @param center          Center color (blended in with weight 0.35)
+ * @param uShift          Horizontal UV offset from nav impulse
+ * @param cells           Grid resolution (higher = smoother, more draw calls)
  */
-private fun DrawScope.drawAuroraBand(
-    color : Color,
-    angle : Float,
-    posX  : Float,
-    bandW : Float,
-    alpha : Float
+private fun DrawScope.drawMeshGradient(
+    tl    : Color,
+    tr    : Color,
+    bl    : Color,
+    br    : Color,
+    center: Color,
+    uShift: Float,
+    cells : Int
 ) {
-    val cx    = size.width * posX
-    val halfW = size.width * bandW * 0.5f
-    val h     = size.height
+    val cellW = size.width  / cells
+    val cellH = size.height / cells
 
-    // Direction perpendicular to the band (the gradient direction)
-    val rad   = Math.toRadians((angle - 90.0))
-    val perpX = cos(rad).toFloat()
-    val perpY = sin(rad).toFloat()
+    for (row in 0 until cells) {
+        for (col in 0 until cells) {
+            // UV coordinates of cell center, shifted by nav impulse
+            val u = ((col + 0.5f) / cells + uShift).coerceIn(0f, 1f)
+            val v = (row  + 0.5f) / cells
 
-    // Gradient start/end points (perpendicular to band direction)
-    val gradStart = Offset(cx - perpX * halfW, h * 0.5f - perpY * halfW)
-    val gradEnd   = Offset(cx + perpX * halfW, h * 0.5f + perpY * halfW)
+            // Bilinear interpolation across 4 corners
+            val cornerColor = bilerp(tl, tr, bl, br, u, v)
 
-    drawRect(
-        brush   = Brush.linearGradient(
-            colorStops = arrayOf(
-                0.00f to color.copy(alpha = 0f),
-                0.30f to color.copy(alpha = alpha * 0.5f),
-                0.50f to color.copy(alpha = alpha),
-                0.70f to color.copy(alpha = alpha * 0.5f),
-                1.00f to color.copy(alpha = 0f)
-            ),
-            start = gradStart,
-            end   = gradEnd
-        ),
-        topLeft = Offset(0f, 0f),
-        size    = Size(size.width, h)
+            // Distance from center (0 at center, 1 at corners)
+            val du = u - 0.5f
+            val dv = v - 0.5f
+            val distFromCenter = (du * du + dv * dv) * 4f   // 0..1
+            val centerWeight   = (1f - distFromCenter).coerceIn(0f, 1f) * 0.35f
+
+            // Blend in center color
+            val finalColor = lerpColor(cornerColor, center, centerWeight)
+
+            drawRect(
+                color   = finalColor,
+                topLeft = Offset(col * cellW, row * cellH),
+                size    = Size(cellW + 1f, cellH + 1f)   // +1 avoids hair-line gaps
+            )
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Color helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+private fun lerpColor(a: Color, b: Color, t: Float): Color {
+    val tc = t.coerceIn(0f, 1f)
+    return Color(
+        red   = a.red   + (b.red   - a.red)   * tc,
+        green = a.green + (b.green - a.green) * tc,
+        blue  = a.blue  + (b.blue  - a.blue)  * tc,
+        alpha = 1f
     )
 }
 
-/** Returns animated float state, or static mid-value if animations disabled. */
+private fun bilerp(
+    tl: Color, tr: Color,
+    bl: Color, br: Color,
+    u : Float, v : Float
+): Color {
+    val top    = lerpColor(tl, tr, u)
+    val bottom = lerpColor(bl, br, u)
+    return lerpColor(top, bottom, v)
+}
+
+/** Animated float, or static mid-value when system animations disabled. */
 @Composable
 private fun animFloat(
     transition : androidx.compose.animation.core.InfiniteTransition?,
@@ -234,7 +228,7 @@ private fun animFloat(
                 animation  = tween(durationMs, easing = EaseInOut),
                 repeatMode = RepeatMode.Reverse
             ),
-            label = "aurora_${from}_${to}"
+            label = "mesh_${from}_${to}"
         )
     } else {
         remember { mutableFloatStateOf((from + to) / 2f) }
