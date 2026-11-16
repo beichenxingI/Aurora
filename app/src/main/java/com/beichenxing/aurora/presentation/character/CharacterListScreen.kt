@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -107,11 +108,15 @@ fun CharacterListScreen(
     Box(modifier = modifier) {
         Scaffold(
             containerColor = AuroraColors.Transparent,
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
             topBar = {
                 TopAppBar(title = { Text("角色") })
             },
             floatingActionButton = {
-                FloatingActionButton(onClick = { importLauncher.launch("*/*") }) {
+                FloatingActionButton(
+                    onClick = { importLauncher.launch("*/*") },
+                    modifier = Modifier.padding(bottom = 88.dp)
+                ) {
                     Icon(Icons.Default.Add, contentDescription = "导入角色卡")
                 }
             },

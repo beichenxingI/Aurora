@@ -53,6 +53,11 @@ object AuroraMotion {
 
     const val AuroraBandPrimaryAlpha = 0.09f
     const val AuroraBandSecondaryAlpha = 0.055f
+    const val AuroraBandMintAlpha = 0.22f
+    const val AuroraBandSkyAlpha = 0.20f
+    const val AuroraBandLilacAlpha = 0.17f
+    const val AuroraBandMidAlphaFactor = 0.55f
+    const val AuroraBandOuterAlphaFactor = 0.20f
 
     const val DialogScrimAlpha = 0.72f
     const val ShadowAlpha = 0.42f
