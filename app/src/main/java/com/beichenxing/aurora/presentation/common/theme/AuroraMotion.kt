@@ -18,10 +18,29 @@ object AuroraMotion {
     const val NavSweepDurationMs = 600
     const val NavIconScaleDurationMs = 250
 
-    const val NavSpringDampingRatio = Spring.DampingRatioNoBouncy
+    const val NavSpringDampingRatio = Spring.DampingRatioMediumBouncy
     const val NavSpringStiffness = Spring.StiffnessMediumLow
+    const val NavIconSpringStiffness = Spring.StiffnessMedium
+    const val NavIconSelectedScale = 1.12f
     const val ButtonPressDampingRatio = Spring.DampingRatioNoBouncy
     const val ButtonPressStiffness = Spring.StiffnessMedium
+
+    const val NavSweepDelayMs: Long = 280L
+    const val NavIndicatorMintAlpha = 0.22f
+    const val NavIndicatorSkyAlpha = 0.14f
+    const val NavSweepLeadFraction = 0.30f
+    const val NavSweepTravelFraction = 1.60f
+    const val NavSweepBandFraction = 0.25f
+
+    const val BackgroundBlob1DurationMs = 45_000
+    const val BackgroundBlob2DurationMs = 58_000
+    const val BackgroundBlob3DurationMs = 50_000
+    const val BackgroundBlob2AlphaFactor = 0.95f
+    const val BackgroundBlobFalloffMidFactor = 0.50f
+    const val BackgroundBlobNudgeMaxFraction = 0.08f
+    const val BackgroundBlob1RadiusFraction = 0.55f
+    const val BackgroundBlob2RadiusFraction = 0.65f
+    const val BackgroundBlob3RadiusFraction = 0.50f
 
     val GlassBlurRadius = 20.dp
     val DialogBlurRadius = 24.dp
@@ -32,8 +51,8 @@ object AuroraMotion {
     const val GlassTopHighlightAlpha = 0.12f
     const val NavSweepPeakAlpha = 0.08f
 
-    const val AuroraBandPrimaryAlpha = 0.075f
-    const val AuroraBandSecondaryAlpha = 0.045f
+    const val AuroraBandPrimaryAlpha = 0.09f
+    const val AuroraBandSecondaryAlpha = 0.055f
 
     const val DialogScrimAlpha = 0.72f
     const val ShadowAlpha = 0.42f
@@ -63,6 +82,8 @@ object AuroraMotion {
     val NavBarMaxWidth = 420.dp
     val NavBarHeight = 64.dp
     val NavBarBottomMargin = 16.dp
+    val NavBarFloatingHorizontalMargin = 24.dp
+    val NavBarFloatingBottomMargin = 20.dp
 
     const val NavSweepWidthFraction = 0.24f
     const val AuroraDriftXFraction = 0.12f

@@ -69,7 +69,20 @@ fun AuroraNavGraph() {
     // HazeState shared between source (NavHost layer) and child (NavBar)
     val hazeState = remember { HazeState() }
 
-    AuroraBackground {
+    val selectedIndex = navItems.indexOfFirst { item ->
+        navBackStackEntry?.destination?.hierarchy
+            ?.any { it.route == item.route } == true
+    }.coerceAtLeast(0)
+
+    // Map index [0, 1, 2] to nudge [-0.6, 0, 0.6]
+    // Blob 2 (Sky) will gently drift toward the selected tab direction.
+    val nudge = when (selectedIndex) {
+        0    -> -0.6f
+        2    -> 0.6f
+        else -> 0f
+    }
+
+    AuroraBackground(blobNudge = nudge) {
         // ── Outer Box: full screen overlay stack ─────────────────────────────
         Box(modifier = Modifier.fillMaxSize()) {
 

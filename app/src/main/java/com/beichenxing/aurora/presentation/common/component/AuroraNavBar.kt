@@ -1,7 +1,8 @@
 package com.beichenxing.aurora.presentation.common.component
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -12,75 +13,65 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.boundsInParent
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.beichenxing.aurora.presentation.common.theme.AuroraColors
 import com.beichenxing.aurora.presentation.common.theme.AuroraMotion
-import com.beichenxing.aurora.presentation.common.theme.rememberSystemAnimationsEnabled
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
-import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeChild
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 data class AuroraNavItem(
     val route: String,
     val label: String,
-    val selectedIcon: ImageVector,
-    val unselectedIcon: ImageVector
+    val selectedIcon: androidx.compose.ui.graphics.vector.ImageVector,
+    val unselectedIcon: androidx.compose.ui.graphics.vector.ImageVector
 )
 
 /**
- * Aurora floating glass pill navigation bar.
+ * Aurora floating pill navigation bar.
  *
- * - Real backdrop blur through Haze (with translucent fallback).
- * - One shared selection indicator, spring-animated x/width.
- * - A single restrained 45-degree sweep after a real route change.
- * - System animation scale is respected.
+ * - Outer capsule: full-width pill, hazeChild for glass effect
+ * - Selected indicator: single shared capsule that spring-animates
+ *   to target item position and width
+ * - Sweep: single one-shot diagonal sweep after indicator arrives
  */
 @Composable
 fun AuroraNavBar(
@@ -90,266 +81,227 @@ fun AuroraNavBar(
     onItemClick: (AuroraNavItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val animationsEnabled = rememberSystemAnimationsEnabled()
     val density = LocalDensity.current
-    val navBottomInset = WindowInsets.navigationBars
-        .asPaddingValues()
-        .calculateBottomPadding()
+    val scope = rememberCoroutineScope()
 
-    val itemBounds = remember { mutableStateMapOf<String, Rect>() }
-    val indicatorX = remember { Animatable(0f) }
+    // Per-item measured bounds (x offset and width in px, relative to Row)
+    val itemOffsets = remember { mutableMapOf<String, Float>() }
+    val itemWidths  = remember { mutableMapOf<String, Float>() }
+    var rowHeight   by remember { mutableFloatStateOf(0f) }
+    var measured    by remember { mutableStateOf(false) }
+
+    // Spring-animated indicator position and width
+    val indicatorX     = remember { Animatable(0f) }
     val indicatorWidth = remember { Animatable(0f) }
-    val sweep = remember { Animatable(0f) }
 
-    var measured by remember { mutableStateOf(false) }
-    var lastRoute by remember { mutableStateOf<String?>(null) }
+    // Sweep animation (0f = not started, 1f = done)
+    val sweepProgress = remember { Animatable(0f) }
+    var lastRoute     by remember { mutableStateOf<String?>(null) }
+    var firstLayout   by remember { mutableStateOf(true) }
 
-    val selectedBounds = currentRoute?.let { itemBounds[it] }
-    val selectedHeight = selectedBounds?.height ?: 0f
+    val navHeight = AuroraMotion.NavBarHeight
 
-    LaunchedEffect(currentRoute, selectedBounds) {
-        val bounds = selectedBounds ?: return@LaunchedEffect
+    // Move indicator when route changes
+    LaunchedEffect(currentRoute, measured) {
+        if (!measured || currentRoute == null) return@LaunchedEffect
 
-        if (!measured) {
-            indicatorX.snapTo(bounds.left)
-            indicatorWidth.snapTo(bounds.width)
-            measured = true
+        val targetX = itemOffsets[currentRoute] ?: return@LaunchedEffect
+        val targetW = itemWidths[currentRoute]  ?: return@LaunchedEffect
+
+        if (firstLayout) {
+            // Snap to position on first layout, no animation
+            indicatorX.snapTo(targetX)
+            indicatorWidth.snapTo(targetW)
+            firstLayout = false
             lastRoute = currentRoute
             return@LaunchedEffect
         }
 
-        val routeChanged = lastRoute != null && lastRoute != currentRoute
-        if (routeChanged) {
-            sweep.snapTo(0f)
-            lastRoute = currentRoute
+        if (currentRoute == lastRoute) return@LaunchedEffect
+
+        // Spring animate to new position
+        launch {
+            indicatorX.animateTo(
+                targetValue = targetX,
+                animationSpec = spring(
+                    dampingRatio = AuroraMotion.NavSpringDampingRatio,
+                    stiffness    = AuroraMotion.NavSpringStiffness
+                )
+            )
+        }
+        launch {
+            indicatorWidth.animateTo(
+                targetValue = targetW,
+                animationSpec = spring(
+                    dampingRatio = AuroraMotion.NavSpringDampingRatio,
+                    stiffness    = AuroraMotion.NavSpringStiffness
+                )
+            )
         }
 
-        if (animationsEnabled) {
-            coroutineScope {
-                launch {
-                    indicatorX.animateTo(
-                        targetValue = bounds.left,
-                        animationSpec = spring(
-                            dampingRatio = AuroraMotion.NavSpringDampingRatio,
-                            stiffness = AuroraMotion.NavSpringStiffness
-                        )
-                    )
-                }
-                launch {
-                    indicatorWidth.animateTo(
-                        targetValue = bounds.width,
-                        animationSpec = spring(
-                            dampingRatio = AuroraMotion.NavSpringDampingRatio,
-                            stiffness = AuroraMotion.NavSpringStiffness
-                        )
-                    )
-                }
-            }
-            if (routeChanged) {
-                sweep.animateTo(
-                    targetValue = 1f,
-                    animationSpec = tween(
-                        durationMillis = AuroraMotion.NavSweepDurationMs,
-                        easing = LinearEasing
-                    )
-                )
-            }
-        } else {
-            indicatorX.snapTo(bounds.left)
-            indicatorWidth.snapTo(bounds.width)
+        // Sweep: wait for indicator to mostly arrive, then play once
+        launch {
+            sweepProgress.snapTo(0f)
+            kotlinx.coroutines.delay(AuroraMotion.NavSweepDelayMs)
+            sweepProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = AuroraMotion.NavSweepDurationMs)
+            )
         }
+
+        lastRoute = currentRoute
     }
 
     Box(
         modifier = modifier.padding(
-            bottom = AuroraMotion.NavBarBottomMargin + navBottomInset
-        ),
-        contentAlignment = Alignment.Center
+            start  = AuroraMotion.NavBarFloatingHorizontalMargin,
+            end    = AuroraMotion.NavBarFloatingHorizontalMargin,
+            bottom = AuroraMotion.NavBarFloatingBottomMargin
+        )
     ) {
+        // Outer pill with haze glass effect
         Box(
             modifier = Modifier
-                .fillMaxWidth(AuroraMotion.NavBarWidthFraction)
-                .widthIn(
-                    min = AuroraMotion.NavBarMinWidth,
-                    max = AuroraMotion.NavBarMaxWidth
-                )
-                .height(AuroraMotion.NavBarHeight)
-                .shadow(
-                    elevation = AuroraMotion.NavShadowRadius,
-                    shape = CircleShape,
-                    clip = false,
-                    ambientColor = AuroraColors.Shadow,
-                    spotColor = AuroraColors.Shadow
-                )
-                .clip(CircleShape)
+                .fillMaxWidth()
+                .height(navHeight)
+                .clip(RoundedCornerShape(100.dp))
                 .hazeChild(
                     state = hazeState,
                     style = HazeStyle(
-                        backgroundColor = AuroraColors.Transparent,
-                        tints = listOf(HazeTint(AuroraColors.GlassWhiteTint)),
-                        blurRadius = AuroraMotion.GlassBlurRadius,
-                        noiseFactor = 0f,
-                        fallbackTint = HazeTint(AuroraColors.GlassBg)
+                        backgroundColor  = AuroraColors.GlassBg,
+                        tint             = dev.chrisbanes.haze.HazeTint(
+                            color = AuroraColors.GlassWhiteTint
+                        ),
+                        blurRadius       = AuroraMotion.GlassBlurRadius
                     )
-                ) {
-                }
+                )
                 .border(
                     width = 1.dp,
                     color = AuroraColors.GlassBorder,
-                    shape = CircleShape
+                    shape = RoundedCornerShape(100.dp)
                 )
         ) {
-            // Single shared selection indicator, behind the items.
-            if (measured && selectedBounds != null && selectedHeight > 0f) {
-                val indicatorTop = selectedBounds.top
-                Box(
-                    modifier = Modifier
-                        .offset {
-                            IntOffset(
-                                x = indicatorX.value.roundToInt(),
-                                y = indicatorTop.roundToInt()
+            // ── Sliding indicator (drawn behind items) ────────────────────
+            if (measured) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val x = indicatorX.value
+                    val w = indicatorWidth.value
+                    val h = size.height
+
+                    // Indicator pill
+                    drawRoundRect(
+                        brush       = Brush.linearGradient(
+                            colors = listOf(
+                                AuroraColors.Mint.copy(
+                                    alpha = AuroraMotion.NavIndicatorMintAlpha
+                                ),
+                                AuroraColors.Sky.copy(
+                                    alpha = AuroraMotion.NavIndicatorSkyAlpha
+                                )
+                            ),
+                            start = Offset(x, 0f),
+                            end   = Offset(x + w, h)
+                        ),
+                        topLeft     = Offset(x, 0f),
+                        size        = Size(w, h),
+                        cornerRadius = CornerRadius(h / 2f)
+                    )
+
+                    // One-shot sweep highlight clipped to indicator
+                    val sweep = sweepProgress.value
+                    if (sweep > 0f && sweep < 1f) {
+                        clipRect(left = x, top = 0f, right = x + w, bottom = h) {
+                            val sweepCenter =
+                                x - w * AuroraMotion.NavSweepLeadFraction +
+                                    sweep * (w * AuroraMotion.NavSweepTravelFraction)
+                            val sweepW = w * AuroraMotion.NavSweepBandFraction
+                            drawRoundRect(
+                                brush = Brush.linearGradient(
+                                    colors = listOf(
+                                        AuroraColors.Transparent,
+                                        AuroraColors.NavSweep,
+                                        AuroraColors.Transparent
+                                    ),
+                                    start = Offset(sweepCenter - sweepW, 0f),
+                                    end   = Offset(sweepCenter + sweepW, h)
+                                ),
+                                topLeft      = Offset(x, 0f),
+                                size         = Size(w, h),
+                                cornerRadius = CornerRadius(h / 2f)
                             )
                         }
-                        .size(
-                            width = with(density) { indicatorWidth.value.toDp() },
-                            height = with(density) { selectedHeight.toDp() }
-                        )
-                        .clip(CircleShape)
-                        .background(AuroraColors.AuroraSubtleGradient)
-                        .background(AuroraColors.GlassWhiteTint)
-                ) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val progress = sweep.value
-                        if (progress <= 0f) return@Canvas
-
-                        val bandWidth =
-                            size.width * AuroraMotion.NavSweepWidthFraction
-                        val travel = size.width + bandWidth * 2f
-                        val centerX = -bandWidth + travel * progress
-
-                        val sweepBrush = Brush.linearGradient(
-                            colors = listOf(
-                                AuroraColors.Transparent,
-                                AuroraColors.NavSweep,
-                                AuroraColors.Transparent
-                            ),
-                            start = Offset(
-                                centerX - bandWidth,
-                                size.height
-                            ),
-                            end = Offset(
-                                centerX + bandWidth,
-                                0f
-                            )
-                        )
-                        drawRect(brush = sweepBrush)
                     }
                 }
             }
 
+            // ── Nav items ─────────────────────────────────────────────────
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .onGloballyPositioned { coords ->
+                        rowHeight = coords.size.height.toFloat()
+                    },
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment     = Alignment.CenterVertically
             ) {
                 items.forEach { item ->
-                    NavBarItem(
-                        item = item,
-                        isSelected = currentRoute == item.route,
-                        animationsEnabled = animationsEnabled,
-                        onBoundsChanged = { rect ->
-                            itemBounds[item.route] = rect
-                        },
-                        onClick = { onItemClick(item) },
-                        modifier = Modifier.weight(1f)
+                    val isSelected = currentRoute == item.route
+                    val iconScale by animateFloatAsState(
+                        targetValue    = if (isSelected) AuroraMotion.NavIconSelectedScale else 1f,
+                        animationSpec  = spring(stiffness = AuroraMotion.NavIconSpringStiffness),
+                        label          = "iconScale_${item.route}"
                     )
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .onGloballyPositioned { coords ->
+                                val pos = coords.positionInParent()
+                                itemOffsets[item.route] = pos.x
+                                itemWidths[item.route]  = coords.size.width.toFloat()
+                                if (itemOffsets.size == items.size &&
+                                    itemWidths.size  == items.size
+                                ) {
+                                    measured = true
+                                }
+                            }
+                            .clickable(
+                                indication     = null,
+                                interactionSource = remember { MutableInteractionSource() },
+                                onClick        = { onItemClick(item) }
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Icon(
+                                imageVector        = if (isSelected) item.selectedIcon
+                                                     else item.unselectedIcon,
+                                contentDescription = item.label,
+                                modifier           = Modifier
+                                    .size(22.dp)
+                                    .graphicsLayer {
+                                        scaleX = iconScale
+                                        scaleY = iconScale
+                                    },
+                                tint               = if (isSelected) AuroraColors.Mint
+                                                     else AuroraColors.TextMuted
+                            )
+                            Text(
+                                text       = item.label,
+                                fontSize   = 10.sp,
+                                fontWeight = if (isSelected) FontWeight.SemiBold
+                                             else FontWeight.Normal,
+                                color      = if (isSelected) AuroraColors.TextPrimary
+                                             else AuroraColors.TextMuted
+                            )
+                        }
+                    }
                 }
             }
-
-            // One-pixel top inner highlight (does not wrap the full border).
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .height(1.dp)
-                    .background(
-                        Brush.horizontalGradient(
-                            colors = listOf(
-                                AuroraColors.Transparent,
-                                AuroraColors.GlassTopHighlight,
-                                AuroraColors.Transparent
-                            )
-                        )
-                    )
-            )
-        }
-    }
-}
-
-@Composable
-private fun NavBarItem(
-    item: AuroraNavItem,
-    isSelected: Boolean,
-    animationsEnabled: Boolean,
-    onBoundsChanged: (Rect) -> Unit,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val targetScale = if (isSelected) 1.1f else 1.0f
-    val animatedScale by animateFloatAsState(
-        targetValue = targetScale,
-        animationSpec = tween(
-            durationMillis = AuroraMotion.NavIconScaleDurationMs
-        ),
-        label = "nav_icon_scale_${item.route}"
-    )
-    val iconScale = if (animationsEnabled) animatedScale else targetScale
-
-    val interactionSource = remember { MutableInteractionSource() }
-
-    Box(
-        modifier = modifier
-            .fillMaxHeight()
-            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-            .onGloballyPositioned { coordinates ->
-                onBoundsChanged(coordinates.boundsInParent())
-            }
-            .clip(CircleShape)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                role = Role.Tab,
-                onClick = onClick
-            )
-            .semantics {
-                selected = isSelected
-                contentDescription = item.label
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Icon(
-                imageVector = if (isSelected) item.selectedIcon else item.unselectedIcon,
-                contentDescription = item.label,
-                modifier = Modifier
-                    .size(20.dp)
-                    .scale(iconScale),
-                tint = if (isSelected) AuroraColors.TextPrimary
-                       else AuroraColors.TextMuted
-            )
-            Text(
-                text = item.label,
-                fontSize = 10.sp,
-                fontWeight = if (isSelected) FontWeight.SemiBold
-                             else FontWeight.Normal,
-                color = if (isSelected) AuroraColors.TextPrimary
-                        else AuroraColors.TextMuted
-            )
         }
     }
 }
