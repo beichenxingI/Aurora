@@ -11,6 +11,7 @@ import com.beichenxing.aurora.domain.repository.CharacterRepository
 import com.beichenxing.aurora.domain.repository.ChatRepository
 import com.beichenxing.aurora.domain.repository.LlmConfigRepository
 import com.beichenxing.aurora.domain.service.LlmService
+import com.beichenxing.aurora.domain.service.PromptAssembler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -50,6 +51,7 @@ class ChatViewModel @Inject constructor(
     private val chatRepository      : ChatRepository,
     private val llmConfigRepository : LlmConfigRepository,
     private val llmService          : LlmService,
+    private val promptAssembler     : PromptAssembler,
     savedStateHandle                : SavedStateHandle
 ) : ViewModel() {
 
@@ -390,8 +392,8 @@ class ChatViewModel @Inject constructor(
                 return@launch
             }
 
-            val character    = _uiState.value.character
-            val systemPrompt = buildSystemPrompt(character)
+            val character = _uiState.value.character
+            val plan      = promptAssembler.assemble(character, messages)
             val now          = System.currentTimeMillis()
             val assistantId  = UUID.randomUUID().toString()
 
@@ -421,7 +423,7 @@ class ChatViewModel @Inject constructor(
             var fullReasoning = ""
 
             try {
-                llmService.streamChat(config, messages, systemPrompt).collect { chunk ->
+                llmService.streamChat(config, plan).collect { chunk ->
                     when {
                         chunk.isDone -> Unit
 
@@ -522,16 +524,6 @@ class ChatViewModel @Inject constructor(
 
     private fun buildTokenPayload(id: String, token: String, isReasoning: Boolean): String =
         """{"id":"$id","token":"${escapeJson(token)}","isReasoning":$isReasoning}"""
-
-    private fun buildSystemPrompt(character: Character?): String {
-        if (character == null) return ""
-        val parts = mutableListOf<String>()
-        if (character.systemPrompt.isNotBlank())            parts.add(character.systemPrompt)
-        if (character.description.isNotBlank())             parts.add("描述：${character.description}")
-        if (character.personality.isNotBlank())             parts.add("性格：${character.personality}")
-        if (character.scenario.isNotBlank())                parts.add("场景：${character.scenario}")
-        return parts.joinToString("\n\n")
-    }
 
     private fun escapeJson(text: String): String = text
         .replace("\\", "\\\\")

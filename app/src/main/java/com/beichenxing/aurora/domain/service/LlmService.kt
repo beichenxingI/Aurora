@@ -5,6 +5,8 @@ import com.beichenxing.aurora.domain.model.LlmProvider
 import com.beichenxing.aurora.domain.model.LlmStreamChunk
 import com.beichenxing.aurora.domain.model.Message
 import com.beichenxing.aurora.domain.model.MessageRole
+import com.beichenxing.aurora.domain.model.PromptMessage
+import com.beichenxing.aurora.domain.model.PromptPlan
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
@@ -41,6 +43,34 @@ class LlmService @Inject constructor(
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     // ─── Public API ───────────────────────────────────────────────────────────
+
+    /**
+     * Primary API: accepts a [PromptPlan] produced by [PromptAssembler].
+     *
+     * Phase 1 bridge: flattens systemBlocks into a single string and converts
+     * PromptMessage to Message for the existing provider-specific builders.
+     * Phase 2 will refactor provider builders to consume PromptPlan directly,
+     * enabling depthBlocks interleaving and multi-block system handling.
+     */
+    fun streamChat(
+        config: LlmConfig,
+        plan: PromptPlan
+    ): Flow<LlmStreamChunk> {
+        val systemPrompt = plan.flatSystemPrompt()
+        // Convert PromptMessage → Message for internal builders.
+        // LlmService only reads .role, .currentContent, and .isHidden from these objects.
+        val messages = plan.chatMessages.map { pm ->
+            Message(
+                id        = pm.id.ifBlank { java.util.UUID.randomUUID().toString() },
+                chatId    = "",
+                role      = pm.role,
+                content   = pm.content,
+                isHidden  = pm.isHidden,
+                createdAt = 0L
+            )
+        }
+        return streamChat(config, messages, systemPrompt)
+    }
 
     /**
      * Send messages to the configured LLM and return a streaming flow of chunks.
