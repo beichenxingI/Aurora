@@ -68,5 +68,14 @@ data class CharacterEntity(
     val createdAt: Long, // Unix timestamp ms
 
     @ColumnInfo(name = "updated_at")
-    val updatedAt: Long // Unix timestamp ms
+    val updatedAt: Long, // Unix timestamp ms
+
+    @ColumnInfo(name = "raw_json", defaultValue = "''")
+    val rawJson: String = "",          // 完整原始卡 JSON 字符串
+
+    @ColumnInfo(name = "spec", defaultValue = "''")
+    val spec: String = "",             // e.g. "chara_card_v2" / "chara_card_v3"
+
+    @ColumnInfo(name = "spec_version", defaultValue = "''")
+    val specVersion: String = ""       // e.g. "2.0" / "3.0"
 )

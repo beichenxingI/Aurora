@@ -41,7 +41,10 @@ fun CharacterEntity.toDomain(): Character = Character(
     isFavorite = isFavorite,
     isPinned = isPinned,
     createdAt = createdAt,
-    updatedAt = updatedAt
+    updatedAt = updatedAt,
+    rawJson = rawJson,
+    spec = spec,
+    specVersion = specVersion
 )
 
 fun Character.toEntity(): CharacterEntity = CharacterEntity(
@@ -69,7 +72,10 @@ fun Character.toEntity(): CharacterEntity = CharacterEntity(
     isFavorite = isFavorite,
     isPinned = isPinned,
     createdAt = createdAt,
-    updatedAt = updatedAt
+    updatedAt = updatedAt,
+    rawJson = rawJson,
+    spec = spec,
+    specVersion = specVersion
 )
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────

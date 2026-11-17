@@ -21,7 +21,7 @@ import com.beichenxing.aurora.data.local.entity.PersonaEntity
         LlmConfigEntity::class,
         PersonaEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {

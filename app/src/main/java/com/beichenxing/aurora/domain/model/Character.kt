@@ -21,5 +21,8 @@ data class Character(
     val isFavorite: Boolean = false,
     val isPinned: Boolean = false,
     val createdAt: Long = 0L,
-    val updatedAt: Long = 0L
+    val updatedAt: Long = 0L,
+    val rawJson: String = "",
+    val spec: String = "",
+    val specVersion: String = ""
 )

@@ -194,7 +194,8 @@ object CharacterCardParser {
             val root = json.parseToJsonElement(jsonStr).jsonObject
 
             // Detect version and extract data object
-            val spec = root["spec"]?.jsonPrimitive?.content
+            val spec = root["spec"]?.jsonPrimitive?.content ?: ""
+            val specVersion = root["spec_version"]?.jsonPrimitive?.content ?: ""
             val dataObj: JsonObject = when {
                 spec == "chara_card_v2" || spec == "chara_card_v3" -> {
                     root["data"]?.jsonObject ?: root
@@ -246,7 +247,10 @@ object CharacterCardParser {
                 extensionsJson = extensionsJson,
                 characterBookJson = characterBookJson,
                 createdAt = now,
-                updatedAt = now
+                updatedAt = now,
+                rawJson = jsonStr,
+                spec = spec,
+                specVersion = specVersion
             )
         } catch (e: Exception) {
             Timber.e(e, "Failed to parse character JSON")

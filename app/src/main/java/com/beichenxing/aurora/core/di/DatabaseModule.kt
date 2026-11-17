@@ -8,6 +8,7 @@ import com.beichenxing.aurora.data.local.dao.LlmConfigDao
 import com.beichenxing.aurora.data.local.dao.MessageDao
 import com.beichenxing.aurora.data.local.dao.PersonaDao
 import com.beichenxing.aurora.data.local.database.AppDatabase
+import com.beichenxing.aurora.data.local.database.MIGRATION_1_2
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -27,7 +28,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "aurora.db"
         )
-            .fallbackToDestructiveMigration() // Phase 2: destructive migration OK (no user data yet)
+            .addMigrations(MIGRATION_1_2)
             .build()
     }
 
