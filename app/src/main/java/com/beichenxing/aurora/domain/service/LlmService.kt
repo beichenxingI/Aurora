@@ -5,6 +5,7 @@ import com.beichenxing.aurora.domain.model.LlmProvider
 import com.beichenxing.aurora.domain.model.LlmStreamChunk
 import com.beichenxing.aurora.domain.model.Message
 import com.beichenxing.aurora.domain.model.MessageRole
+import com.beichenxing.aurora.domain.model.PromptBlock
 import com.beichenxing.aurora.domain.model.PromptMessage
 import com.beichenxing.aurora.domain.model.PromptPlan
 import kotlinx.coroutines.flow.Flow
@@ -47,19 +48,18 @@ class LlmService @Inject constructor(
     /**
      * Primary API: accepts a [PromptPlan] produced by [PromptAssembler].
      *
-     * Phase 1 bridge: flattens systemBlocks into a single string and converts
-     * PromptMessage to Message for the existing provider-specific builders.
+     * Phase 1: flattens systemBlocks, interleaves depthBlocks into chat history.
      * Phase 2 will refactor provider builders to consume PromptPlan directly,
-     * enabling depthBlocks interleaving and multi-block system handling.
+     * enabling multi-role system blocks and outlet/AN handling.
      */
     fun streamChat(
         config: LlmConfig,
         plan: PromptPlan
     ): Flow<LlmStreamChunk> {
         val systemPrompt = plan.flatSystemPrompt()
-        // Convert PromptMessage → Message for internal builders.
-        // LlmService only reads .role, .currentContent, and .isHidden from these objects.
-        val messages = plan.chatMessages.map { pm ->
+
+        // Convert PromptMessage → Message
+        val baseMessages = plan.chatMessages.map { pm ->
             Message(
                 id        = pm.id.ifBlank { java.util.UUID.randomUUID().toString() },
                 chatId    = "",
@@ -69,7 +69,15 @@ class LlmService @Inject constructor(
                 createdAt = 0L
             )
         }
-        return streamChat(config, messages, systemPrompt)
+
+        // Interleave depthBlocks into chat history
+        val messagesWithDepth = if (plan.depthBlocks.isEmpty()) {
+            baseMessages
+        } else {
+            interleaveDepthBlocks(baseMessages, plan.depthBlocks)
+        }
+
+        return streamChat(config, messagesWithDepth, systemPrompt)
     }
 
     /**
@@ -432,5 +440,65 @@ class LlmService @Inject constructor(
                 })
             })
         }
+    }
+
+    // ─── Depth block interleaving ─────────────────────────────────────────────
+
+    /**
+     * Insert world info depth blocks into chat history.
+     *
+     * Depth semantics (ST convention):
+     *   depth=0 → after last message
+     *   depth=1 → before last message
+     *   depth=2 → before 2nd-to-last message
+     *   depth=N → before Nth-from-end message
+     *
+     * If depth >= message count, blocks are prepended to history.
+     *
+     * @param baseMessages Original chat history in chronological order.
+     * @param depthBlocks  Map of depth → blocks to insert at that depth.
+     * @return New message list with depth blocks interleaved as system messages.
+     */
+    private fun interleaveDepthBlocks(
+        baseMessages: List<Message>,
+        depthBlocks: Map<Int, List<PromptBlock>>
+    ): List<Message> {
+        if (depthBlocks.isEmpty()) return baseMessages
+
+        val result = mutableListOf<Message>()
+        val messageCount = baseMessages.size
+
+        // Process messages in reverse order to handle depth correctly
+        // Build a map: insert position → blocks to insert before that position
+        val insertMap = mutableMapOf<Int, MutableList<PromptBlock>>()
+
+        depthBlocks.forEach { (depth, blocks) ->
+            // depth=0 means after last message (insert position = messageCount)
+            // depth=1 means before last message (insert position = messageCount - 1)
+            // depth=N means before Nth-from-end (insert position = messageCount - N)
+            val insertPos = (messageCount - depth).coerceIn(0, messageCount)
+            insertMap.getOrPut(insertPos) { mutableListOf() }.addAll(blocks)
+        }
+
+        // Build final list
+        for (i in 0..messageCount) {
+            // Insert blocks scheduled for this position
+            insertMap[i]?.forEach { block ->
+                result.add(Message(
+                    id        = java.util.UUID.randomUUID().toString(),
+                    chatId    = "",
+                    role      = block.role,
+                    content   = block.content,
+                    isHidden  = false,
+                    createdAt = 0L
+                ))
+            }
+            // Add original message if not past end
+            if (i < messageCount) {
+                result.add(baseMessages[i])
+            }
+        }
+
+        return result
     }
 }
